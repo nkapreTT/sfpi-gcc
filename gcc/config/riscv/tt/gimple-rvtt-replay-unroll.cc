@@ -1101,6 +1101,30 @@ public:
    SFPU loop that meets the proof obligations below.  It only sets
    loop->unroll; it reorders nothing itself.
 
+   The reordering half is the round-interleave cyclic extension in
+   rtl-rvtt-schedule.cc, which lifts the list scheduler's self-loop
+   deferral for exactly this shape.  It judges the reorder by the
+   steady-state initiation interval of the wrapped (cyclic) dependence
+   model rather than by one body's critical path (B. R. Rau and
+   C. D. Glaeser, MICRO-14, 1981), accepting only a strict decrease.
+   The scheduler's dependence edges keep a reduction-tail update in
+   original order, so the interleave is a pure reorder and bit-exactness
+   holds by construction.  The win is counted in stall cycles, not
+   delivered words: the doubled body delivers exactly the same words.
+
+   RENAMING PREREQUISITE: the RTL unroller duplicates the body on the
+   SAME pseudos, and the allocator packs the copies' short lifetimes
+   into the same LREGs -- a storage-induced false WAW/WAR recurrence
+   that serializes the doubled row (the false recurrence modulo
+   variable expansion removes; M. Lam, PLDI 1988).  The cyclic
+   scheduler therefore performs a region-scoped storage-collision
+   rename (the lreg-rename pass's discipline, see
+   ls_cyclic_rename_collisions in rtl-rvtt-schedule.cc) before judging
+   the interleave, restoring the original registers exactly on refusal.
+   Unlike software pipelining, no kernel, prologue or epilogue is ever
+   built: the factor is fixed at two and the iterations must be
+   independent rather than merely pipelineable.
+
    PROOF OBLIGATIONS (refusing by name; annotation-only, so a refusal
    leaves the function unchanged):
    - innermost single-block counted loop, trips proven by the shared
@@ -1143,8 +1167,10 @@ public:
    the replay-loop-unroll allow table that can be reordered --
    pure-LREG compute with no CC write, no Dst traffic, no RWC step, no
    config access, no next-slot acceptance stall, no unaudited-latency
-   class.  Anything else in the row is a reordering barrier, so
-   requesting the unroll would only double code.  Returns true for
+   class (the fail-closed vocabulary of ls_admissible_p in
+   rtl-rvtt-schedule.cc).  Anything else in the row is an RTL
+   scheduling barrier, so requesting the unroll would only double
+   code.  Returns true for
    admissible word classes, false to refuse by name.  */
 
 static bool
