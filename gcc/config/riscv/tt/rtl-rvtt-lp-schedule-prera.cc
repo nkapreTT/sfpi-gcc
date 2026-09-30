@@ -23,9 +23,10 @@ along with GCC; see the file COPYING3.  If not see
    pressure gate: after allocation the eight hard LREGs and their WAR/WAW
    edges are the bound, and a pressure-aware dispatch over virtual registers
    has to happen before allocation.  This pass does that: it runs on
-   pseudo-register RTL immediately before register allocation (IRA), where
-   reordering can still turn a ten-simultaneously-live instruction order
-   into an eight-register-schedulable one -- the difference between a clean
+   pseudo-register RTL immediately before register allocation (rvtt_lp_alloc
+   coloring and IRA), where reordering can still turn a
+   ten-simultaneously-live instruction order into an
+   eight-register-schedulable one -- the difference between a clean
    allocation and an lreg-pressure-exceeded error.
 
    The algorithm is GCC's own SCHED_PRESSURE_MODEL (haifa-sched.cc, "This is
@@ -55,14 +56,14 @@ along with GCC; see the file COPYING3.  If not see
       cannot do this -- it schedules in place; a transactional pass can).
 
    Pressure.  The unit of pressure is the simultaneous liveness of XTT32SI
-   allocation units (SFPU vector pseudos plus any live hard LREG).  The pass
-   does not trust its own bookkeeping: the region's baseline per-point
-   pressure is recomputed independently from the DF live-register problem
-   (backward simulation from DF_LR_OUT), and a disagreement with the
-   scheduler's model refuses by name (pressure-oracle-disagreement) before
-   any mutation; after a commit the same DF recount must reproduce the
-   candidate's claimed peak or the chain is restored exactly and the region
-   refuses by the same name.
+   allocation units (SFPU vector pseudos plus any live hard LREG) -- the
+   same count rtl-rvtt-lp-alloc.cc audits.  The pass does not trust its own
+   bookkeeping: the region's baseline per-point pressure is recomputed
+   independently from the DF live-register problem (backward simulation from
+   DF_LR_OUT), and a disagreement with the scheduler's model refuses by name
+   (pressure-oracle-disagreement) before any mutation; after a commit the
+   same DF recount must reproduce the candidate's claimed peak or the chain
+   is restored exactly and the region refuses by the same name.
 
    Regions and barriers follow the post-RA list scheduler's audited-region
    discipline, evaluated over pseudos: maximal straight-line runs of issued
@@ -149,8 +150,9 @@ namespace {
 
 /* ------------------------- pressure units -------------------------- */
 
-/* An XTT32SI allocation unit: an SFPU vector pseudo or a live hard
-   LREG.  */
+/* An XTT32SI allocation unit: an SFPU vector pseudo or a live hard LREG.
+   Matches xtt32_allocation_unit_p in rtl-rvtt-lp-alloc.cc, the allocator
+   this pass feeds.  */
 
 static bool
 vec_unit_p (unsigned regno)
@@ -1349,7 +1351,8 @@ public:
 } /* anonymous namespace */
 
 /* Instantiate the pre-allocation pressure scheduling pass for CTXT;
-   rvtt-passes.def places it before ira, and it gates on optimization plus
+   rvtt-passes.def places it before ira (ahead of the lp-alloc pass it
+   feeds), and it gates on optimization plus
    -mtt-tensix-optimize-pressure-schedule-prera.  */
 
 rtl_opt_pass *

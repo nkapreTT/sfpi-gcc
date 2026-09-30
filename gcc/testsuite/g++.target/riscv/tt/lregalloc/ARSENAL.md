@@ -62,7 +62,9 @@ Labels are machine-checked: the compiler's own prgm_const SSA pressure
 model (`-mtt-tensix-optimize-const-remat
 -fdump-tree-rvtt_prgm_const-details`) reports exactly N for every
 ladder and exactly 8 for every hand-spilled twin.  raw-ladder8-label-bh.C
-scans that dump line.
+scans that dump line; the oracle
+(tools/lreg_pressure_oracle.py) checks any kernel from the command
+line.
 
 Each ladder's golden is its FULL final state vector (one output row per
 live value): a single folded output would be insensitive to row swaps,
@@ -79,6 +81,13 @@ correct allocator compiling a ladder must produce exactly its twin's
 output rows.
 
 ### Tools (tools/)
+
+- `lreg_pressure_oracle.py`: max simultaneous liveness from the
+  compiler's own dumps -- primary: rvtt_prgm_const's pre-transform SSA
+  pressure line (any CFG); secondary: rvtt_lp_schedule's per-region
+  `peak=` (straight-line only); third signal: the
+  `lreg-pressure-exceeded` refusal count at plain flags.  `--expect N`
+  machine-checks a label.
 
 - `lreg_arsenal_gate.py`: compiles every test listed in VERDICTS.tsv
   and compares the outcome with the expected verdict.  `--mode today`
