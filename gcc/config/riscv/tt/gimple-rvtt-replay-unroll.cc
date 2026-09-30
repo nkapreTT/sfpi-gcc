@@ -93,7 +93,8 @@ along with GCC; see the file COPYING3.  If not see
    refuse the class.  Zero-word entries are SSA plumbing that expands
    to no delivered word.  The estimate feeds only the size bounds; the
    replay former re-derives the exact window from the final insn
-   stream.  Exported through rvtt-protos.h.  */
+   stream.  Exported through rvtt-protos.h: the delivery-shape pass
+   shares this vocabulary, so the two passes cannot drift.  */
 
 int
 rvtt_replay_unroll_row_words (const rvtt_insn_data *insnd)
