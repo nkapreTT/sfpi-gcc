@@ -48,6 +48,33 @@ checks a compiler against that table.
 
 ## Components
 
+### Reduced pressure failures (sfpi-victim-*.C)
+SFPI kernels reduced from SFPU library operations, written in the shape
+that exceeds the 8-LREG file (the library versions are restructured, or
+round-trip values through Dst, to stay within it).  Without LREG
+spilling each is rejected with `lreg-pressure-exceeded`; the number in
+parentheses is the pressure-model liveness (VERDICTS.tsv label):
+
+- sfpi-victim-asinh-bh.C (10): asinh with |x| and x*x held across the
+  sqrt/reciprocal expression and the log1p polynomial.
+- sfpi-victim-atan2-bh.C (10): atan2 with the quadrant folds applied
+  after the polynomial, so ay/ax/x/y stay live through it.
+- sfpi-victim-atanh-bh.C (9): atanh with the reciprocal->log1p
+  expression passed directly and |x| cached for the boundary fixups.
+- sfpi-victim-welford-bh.C (12): Welford prefix mean/M2 with the
+  gathered inputs held to the end of the block, alongside the
+  accumulators and loop-held vFloat step weights.
+- sfpi-victim-xielu-bh.C (9): xielu with alpha_p/alpha_n held as
+  loop-invariant vFloats.
+- sfpi-victim-xielu-remat-bh.C (-): contrast twin; the same body
+  COMPILES with -mtt-tensix-optimize-const-remat, marking the boundary
+  between constant pressure and computed-value pressure.
+
+Under the allocator all five refusing kernels must COMPILE.  Their DAGs
+contain compiler-scheduled floating-point operations, so bit-exactness
+against a hand-spilled twin is NOT claimed; numeric correctness is left
+to the operations' own accuracy tests.
+
 ### Graded pressure ladder (raw-ladder*.C)
 XOR-ring kernels (ladder-body.h) with EXACTLY 8 / 9 / 10 / 12 / 16
 simultaneously live values (ring dependence makes the label
@@ -55,14 +82,15 @@ reschedule-proof; volatile Dst loads pin the endpoints).  XOR-only on
 purpose: opaque unspecs (no folding), no CC state, format-independent,
 and host-exact in int32 -- the golden needs no floating-point rounding
 model.  No literal constants anywhere, so const-remat/const-residency
-cannot relieve the pressure.  1.0f-style creg folding
+cannot relieve the pressure (the raw-ladderN-bh.C tests assert the
+refusal with both relief flags on).  1.0f-style creg folding
 (CREG_IDX_1 = lreg10) is structurally impossible here.
 
 Labels are machine-checked: the compiler's own prgm_const SSA pressure
 model (`-mtt-tensix-optimize-const-remat
 -fdump-tree-rvtt_prgm_const-details`) reports exactly N for every
 ladder and exactly 8 for every hand-spilled twin.  raw-ladder8-label-bh.C
-scans that dump line; the oracle
+and the raw-ladderN-bh.C tests scan that dump line; the oracle
 (tools/lreg_pressure_oracle.py) checks any kernel from the command
 line.
 
@@ -79,6 +107,22 @@ each ladder is implementable in the 8-register file via exact spills,
 and are members of the no-op byte set.  Because the DAG is the same, a
 correct allocator compiling a ladder must produce exactly its twin's
 output rows.
+
+### Refusal edges
+- raw-bf16-ladder9-bh.C (+twin): 9-live, all Dst traffic FMT_FP16B ->
+  `lreg-spill-inexact-dst-mode`.
+- raw-nofree9-rwc-bh.C (+twin): 9-live with TTINCRWC moving the window
+  and stores through it inside the loop -> row identity unprovable in
+  any epoch -> `lreg-spill-no-free-dst`.
+- raw-densedst9-bh.C: 64 rows all written-before/read-after the 9-live
+  region.  EITHER the named refusal OR compile with a spill row provably
+  outside the window -- in which case all 64 preserved rows must come
+  back bit-exactly (clobber trap).
+Without LREG spilling all three are rejected with
+`lreg-pressure-exceeded`; the dg-error patterns accept either that name
+or the allocator's refusal name, so the tests pass with either
+compiler, while the gate's allocator mode demands the allocator's
+name.
 
 ### Tools (tools/)
 
@@ -115,3 +159,14 @@ at a model value of 9 in some shapes: a kernel can report 9 and still
 allocate.  The ladders use ring dependence precisely so that the model
 equals the real pressure; for other kernels, compare the model number
 with the behavioral `lreg-pressure-exceeded` refusal count.
+
+### Tests expected to change under the allocator
+When spilling is enabled, these existing tests, which pin the current
+refusals, start compiling and their expectations must be revisited:
+tensix/spill-diag-named-error-bh.C, tensix/spill-diag-default-bh.C,
+tensix/const-remat-live-operand-nearmiss-bh.C,
+tensix/const-remat-consumer-nearmiss-bh.C,
+tensix/const-residency-cc-refuse-bh.C,
+sfpi/dst-ownership-refuse-pressure-bh.C.
+(The bf16 and no-free-row tests here must NOT flip: they pin refusals
+the allocator keeps.)

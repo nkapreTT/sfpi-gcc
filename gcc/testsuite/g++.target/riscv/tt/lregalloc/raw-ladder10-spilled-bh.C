@@ -4,6 +4,7 @@
 // the dataflow, so these results are the reference for any exact
 // Dst-spilling allocator applied to the unspilled form.  With at most 8
 // values live, this test itself needs no spilling.
+// The unspilled form is raw-ladder10-bh.C.
 // { dg-do compile }
 // { dg-options "-mcpu=tt-bh-tensix -O2 -fno-unroll-loops" }
 

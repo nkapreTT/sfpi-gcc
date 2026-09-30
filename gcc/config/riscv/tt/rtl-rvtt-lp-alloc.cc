@@ -71,8 +71,8 @@ along with GCC; see the file COPYING3.  If not see
         deliberately left to IRA: the DSATUR verdict is the colourability
         certificate, and delegating assignment keeps IRA's coalescing and
         guarantees that untouched functions allocate exactly as without the
-        pass.  IRA is not an optimal colourer and may still spill, in which
-        case the over-pressure failure remains.
+        pass.  IRA is not an optimal colourer and may still spill; the named
+        error of rtl-rvtt-spill-diag.cc then remains the backstop.
 
       - Under the additional default-off -mtt-tensix-optimize-lreg-coalesce,
         conservative coalescing (Briggs, Cooper and Torczon; George and Appel;
@@ -732,8 +732,9 @@ enforce_colorability (function *fn)
    set looks equally cheap in isolation and IRA freely picks a register
    combination no single alternative admits.  LRA then repairs the mismatch
    with singleton-class reloads, and a reload needs a free LREG: at peak
-   pressure 8 there is none, so LRA spills to memory and the compilation fails
-   on a kernel a consistent assignment would have compiled.
+   pressure 8 there is none, so LRA spills to memory and the post-RA
+   rtl-rvtt-spill-diag.cc error fires on a kernel a consistent assignment would
+   have compiled.
 
    This layer restores the missing information: it solves the
    alternative-selection and colouring problem over the function's pinned webs
