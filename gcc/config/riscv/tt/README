@@ -40,8 +40,8 @@ a recorded reason (see section 5).
   replay formation           Record/playback formation: hoisting a record out
 			     of a loop, first-trip peel, outward lift across
 			     enclosing loops, window sizing.
-  LREG renaming              Post-RA renaming of storage-colliding vector
-			     register webs over the 8 LREGs.
+  LREG pressure              Pressure scheduling and renaming tiers for the 8
+			     LREGs.
   prgm constants             Constant-register promotion and the priced
 			     residency walk that keeps invariants resident.
   LUT selection              If-conversion of piecewise range dispatch into
