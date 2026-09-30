@@ -57,7 +57,8 @@ under the default-off flag `-mtt-tensix-optimize-lreg-alloc`:
 5. **Transactionality.** Every emitted insn and operand rewrite is
    logged; any refusal discovered after mutation rolls the stream back
    to the pre-allocation shape, so the over-pressure failure is
-   reported on the original stream.
+   reported on the original stream
+   (`lreg-alloc-rows-exhausted-rollback-bh.C`).
 
 6. **Dual-bank pinned chains.** When the function contains a
    relational pin site (an insn whose alternatives pin XTT32SI operands
@@ -195,6 +196,13 @@ CC contract that the CC synthesis (`gimple-rvtt-cc.cc`) assumes:
   the scratch row to 248.
 - `lreg-alloc-rowloop-*-bh.C`: spills in a row loop with a proven
   trip bound (8 trips) compile with cleared offsets.
+- `lreg-alloc-bf16-refuse-bh.C`, `lreg-alloc-cc-refuse-bh.C`,
+  `lreg-alloc-rows-exhausted-rollback-bh.C`: named refusals, error
+  preserved (the rollback test checks transactionality).
+- `lreg-alloc-dst-layout-undeclared-bh.C`: no declaration -> named
+  refusal.
+- the 64-trip row-loop variant: the trip bound is proven but every
+  scratch offset falls inside the alias window -> named refusal.
 - `lreg-alloc-dualbank-*-bh.C` / `-wh.C`: dual-bank pinned-chain
   binding, its no-op case and its refusals.
 - `lreg-coalesce-*.C`: conservative coalescing fires and near misses.

@@ -309,16 +309,17 @@ rvtt_insn_data::sets_cc (gcall *stmt) const
   return false;
 }
 
-/* Set once the SFPU register-pressure diagnosis has reported (and deleted)
+/* Set by rtl-rvtt-spill-diag.cc when it has reported (and deleted)
    allocated SFPU memory moves in this compilation.  */
 bool rvtt_spill_diag_reported;
 
 void rvtt_mov_error (const rtx_insn *insn)
 {
-  /* Once the register-pressure diagnosis, which runs directly after
-     allocation, has reported this compilation's SFPU memory moves, the
-     backstop stands down: a stray placeholder in the discarded assembly of
-     a failed compilation is harmless.  An SFPU memory move in any other
+  /* The named diagnosis of allocated SFPU memory moves
+     (lreg-pressure-exceeded) is issued by rtl-rvtt-spill-diag.cc, which
+     runs directly after allocation.  Only once THAT diagnosis has fired may
+     the backstop stand down: a stray placeholder in the discarded assembly
+     of a failed compilation is harmless.  An SFPU memory move in any other
      compilation -- including one where unrelated user errors were reported
      -- is a compiler bug.  */
   if (rvtt_spill_diag_reported && seen_error ())

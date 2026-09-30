@@ -133,7 +133,7 @@ along with GCC; see the file COPYING3.  If not see
    wide: backward liveness of allocatable vector SSA values with a
    per-point peak.  It is a model, not the allocator: residual
    over-pressure after both mechanisms dumps a named refusal and the
-   post-reload spill diagnosis turns any
+   post-reload spill diagnosis (rtl-rvtt-spill-diag.cc) turns any
    actual spill into a named user error instead of an ICE.  */
 
 /* The pressure model itself -- the width table, the tracked-value

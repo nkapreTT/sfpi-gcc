@@ -26,9 +26,9 @@ along with GCC; see the file COPYING3.  If not see
 #include "sfpu-ops-qsr.h"
 
 /* Diagnose an SFPU register moved to or from memory.  Not noreturn: once
-   the SFPU register-pressure diagnosis has reported this compilation's SFPU
-   memory moves (rvtt_spill_diag_reported), it returns without a further
-   diagnostic.  */
+   rtl-rvtt-spill-diag.cc has reported this compilation's SFPU memory moves
+   as register-pressure errors (rvtt_spill_diag_reported), it returns
+   without a further diagnostic.  */
 extern void rvtt_mov_error (const rtx_insn *) ATTRIBUTE_COLD;
 extern bool rvtt_spill_diag_reported;
 
