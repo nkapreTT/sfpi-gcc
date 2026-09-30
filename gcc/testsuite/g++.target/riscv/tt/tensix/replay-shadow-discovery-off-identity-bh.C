@@ -2,6 +2,7 @@
 // Suffix-automaton discovery with the shadow measurement not requested:
 // the shadow analysis prints nothing, the pass's dump is unaffected, and
 // replay formation is unchanged.
+// Same source as replay-shadow-discovery-barrier-bh.C, without the option.
 // { dg-final { scan-rtl-dump-not "replay-maximal-repeats" "rvtt_replay" } }
 // { dg-final { scan-rtl-dump "Capturing and executing sequence \\\[0,6\\\) 3 instances to \\\[0,\\+6\\\) saving=9" "rvtt_replay" } }
 // { dg-final { scan-assembler-times "TTREPLAY\t0, 6, 1, 1" 1 } }

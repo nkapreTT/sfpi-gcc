@@ -1647,8 +1647,10 @@ public:
 
 } /* anon namespace */
 
-/* The drained-frontend window of the current target, exported through
-   rvtt-protos.h.  */
+/* Exported through rvtt-protos.h as the single source of the drained-frontend
+   window: the replay former (rtl-rvtt-replay.cc) places no-exec records under
+   the same composition hazard as this file's group guard, so both must use the
+   same quantity.  */
 
 unsigned
 rvtt_modwrite_drained_frontend_window (void)
@@ -1752,9 +1754,9 @@ block_frontend_cover_words (basic_block bb)
   return words;
 }
 
-/* Exported through rvtt-protos.h: would a NO-EXEC replay capture
-   hoisted into PREHEADER (before a trailing jump, else at block end) lie
-   within the drained-frontend window of a WOULD-BE mod-write
+/* Exported to the replay former (rvtt-protos.h): would a NO-EXEC replay
+   capture hoisted into PREHEADER (before a trailing jump, else at block
+   end) lie within the drained-frontend window of a WOULD-BE mod-write
    row -- a candidate this pass's find_candidates would transform?  If so
    this pass's group guard (noexec_record_composition_p) is certain to
    REFUSE the group formed from that candidate, the transformed stores
@@ -1832,11 +1834,11 @@ rvtt_dst_autoincr_hoist_capture_composition_p (basic_block preheader,
   return false;
 }
 
-/* Exported through rvtt-protos.h: is INSN a typed Dst access this pass
-   has retargeted to the compiler-owned auto-increment scratch modifier --
-   a CARRIED access whose every execution advances the Dst RWC through the
-   owned ADDR_MOD program?  Classification is this pass's own
-   classify_access over the
+/* Exported to the replay window re-formation that runs after this pass
+   (rvtt-protos.h): is INSN a typed Dst access this pass has retargeted to
+   the compiler-owned auto-increment scratch modifier -- a CARRIED access
+   whose every execution advances the Dst RWC through the owned ADDR_MOD
+   program?  Classification is this pass's own classify_access over the
    static modifier operand.  Only this pass writes the scratch modifier
    (the platform contract the capability table documents: SFPI code uses
    the no-increment modifier, the scratch slot is compiler-owned), so a
