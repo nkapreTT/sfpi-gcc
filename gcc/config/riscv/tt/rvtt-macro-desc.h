@@ -135,8 +135,8 @@ extern void rvtt_macro_descriptor_release (macro_descriptor *);
 
 /* Layer-7a in-tree verification of a synthesized descriptor against the
    region's explicit facts (rvtt-macro-verify.cc).  Runs under
-   checking.  Returns null on success, else the failing component's
-   stable tag; a non-null
+   -mtt-tensix-macro-planner-verify and always under checking.  Returns
+   null on success, else the failing component's stable tag; a non-null
    return is a descriptor refusal and must prevent formation.  */
 extern const char *rvtt_macro_verify_descriptor
   (const macro_region &region, const macro_schedule &schedule,
@@ -156,9 +156,10 @@ extern bool rvtt_macro_build_expectations
   (const macro_region &region, const macro_schedule &schedule,
    rvtt_macro_verify::expectations *out);
 
-/* Drain-aware boundary placement: prove that the derived drain of the
-   run ending before row END may be elided at the boundary into the next
-   run [END, NEXT_END), because every
+/* Drain-aware boundary placement (rtl-rvtt-schedule.cc, consumed by the
+   planner's emission under -mtt-tensix-optimize-drain-schedule): prove
+   that the derived drain of the run ending before row END may be elided
+   at the boundary into the next run [END, NEXT_END), because every
    in-flight macro event's writeback provably precedes the first
    conflicting follower access.  All distances derive from the
    descriptor's own SequenceBits delays (the derived timing calendars);
@@ -178,7 +179,9 @@ extern bool rvtt_macro_drain_boundary_elidable
 extern bool rvtt_macro_drain_backedge_elidable
   (const macro_region &region, const macro_schedule &schedule,
    const macro_descriptor &desc, unsigned first_run_end, FILE *dump);
-/* Window-pairing inter-row drain tuning: the minimal proven inter-row
+/* Window-pairing inter-row drain tuning (rtl-rvtt-schedule.cc,
+   consumed by the planner's emission under
+   -mtt-tensix-optimize-window-pairing): the minimal proven inter-row
    drain for a run of uniform rows under the fixed-VD value-carrier
    obligation -- the exact pending-event-vs-follower-access model
    (register-, Dst-, and sub-unit-aware) in place of the shape rule's

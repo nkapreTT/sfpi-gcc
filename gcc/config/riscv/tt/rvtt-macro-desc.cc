@@ -17,8 +17,9 @@ You should have received a copy of the GNU General Public License
 along with GCC; see the file COPYING3.  If not see
 <http://www.gnu.org/licenses/>.  */
 
-/* Layer 4 of the macro planner: turn a proven region into the
-   descriptor program the hardware will execute.
+/* Layer 4 of the macro planner (see rtl-rvtt-macro-planner.cc for the layer
+   map): turn a proven region into the descriptor program the hardware will
+   execute.
 
    Selection is keyed by the DERIVED event structure of the canonical row --
    per-carrier value events and the architectural opcode bytes they realise --

@@ -7182,11 +7182,11 @@ make_pass_rvtt_schedule (gcc::context *ctxt)
 }
 
 /* ----------------------------------------------------------------------
-   Drain-aware boundary placement (an emission service for macro-region
-   formation; placement logic lives here, the emission consumes the
-   verdict).
+   Drain-aware boundary placement (macro-planner emission service, under
+   -mtt-tensix-optimize-drain-schedule; placement logic lives here, the
+   planner's emission consumes the verdict).
 
-   Formation derives core_drain_slots -- the greatest event writeback
+   The planner derives core_drain_slots -- the greatest event writeback
    distance past a run's last issue slot -- from the descriptor's own
    SequenceBits delay fields (rvtt-macro-sched-core.h, core_drain_slots;
    the delays are the derived timing calendars, never hand constants) and
@@ -7316,7 +7316,7 @@ struct drain_horizon
 };
 
 /* Decode the run horizon from SCHEDULE and DESC into *H.  Word
-   positions follow the run's emission order (issue slots
+   positions mirror emit_planner_run's emission order (issue slots
    ascending).  Per-macro launched-event timing is decoded from the
    descriptor's OWN sequence words through the established SequenceBits
    format (rvtt-macro-tables.h: byte i programs sub-unit i; case = bits
@@ -7831,8 +7831,9 @@ rvtt_macro_drain_backedge_elidable (const macro_region &region,
 
 
 /* ----------------------------------------------------------------------
-   Window pairing: inter-row drain tuning (an emission service for
-   macro-region formation, which consumes the verdict).
+   Window pairing: inter-row drain tuning (macro-planner emission
+   service, under -mtt-tensix-optimize-window-pairing; the planner's
+   emission consumes the verdict).
 
    The conservative inter-row rule places the FULL derived drain between
    consecutive rows whenever any launch is a fixed-VD VALUE carrier -- a shape

@@ -10732,7 +10732,8 @@ riscv_override_options_internal (struct gcc_options *opts)
 {
   /* -mtt-tensix-analyze-loadmacro and -mtt-tensix-emit-loadmacro no
      longer have a pass behind them; reject them rather than let them
-     silently do nothing.  */
+     silently do nothing.  SFPLOADMACRO regions are formed by
+     -mtt-tensix-macro-planner instead.  */
   if (opts->x_riscv_tt_analyze_loadmacro || opts->x_riscv_tt_emit_loadmacro)
     error ("%<-mtt-tensix-analyze-loadmacro%> and "
 	   "%<-mtt-tensix-emit-loadmacro%> were removed with the "

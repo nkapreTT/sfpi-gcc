@@ -46,6 +46,8 @@ along with GCC; see the file COPYING3.  If not see
    compare against expectations assembled from the region's explicit
    facts.  A mismatch refuses with descriptor-verification-failed and the
    failing component's stable tag -- the descriptor is never "fixed up".
+   Enabled by -mtt-tensix-macro-planner-verify and always under
+   checking.
 
    Returns null when verification passes (or nothing was synthesized);
    otherwise the failing component's stable tag.  The caller MUST treat
