@@ -42,10 +42,11 @@ along with GCC; see the file COPYING3.  If not see
    Layer 2 in more detail:
 
       - The interference graph is built over XTT32SI pseudo webs and fixed
-        hard-LREG reservation intervals for raw-owned registers.  Reservations
-        are fixed-colour, nonspillable nodes; ordinary singleton-class
-        precolours come from the rvtt_sfpreadlregN / rvtt_sfpwritelregN
-        metadata patterns.  Any other hard LREG reference before IRA refuses
+        hard-LREG reservation intervals for raw-owned registers, which
+        pass_rvtt_lreg_livein emits before this pass.  Reservations are
+        fixed-colour, nonspillable nodes; ordinary singleton-class precolours
+        come from the rvtt_sfpreadlregN / rvtt_sfpwritelregN metadata patterns.
+        Any other hard LREG reference before IRA refuses
         (hard-sfpu-reg-pre-ira).
 
       - When the function's peak simultaneous SFPU pressure fits the file, the
@@ -1635,8 +1636,8 @@ public:
 } /* anonymous namespace */
 
 /* Instantiate the LREG pressure/allocation pass for CTXT; rvtt-passes.def
-   places it before ira, after the pre-IRA pressure scheduler, and it gates on
-   optimization, a WH/BH Tensix target, and
+   places it before ira, after the raw-LREG live-in reservations, and it gates
+   on optimization, a WH/BH Tensix target, and
    -mtt-tensix-optimize-pressure-schedule (audit dump) or
    -mtt-tensix-optimize-lreg-alloc (enforcement).  */
 

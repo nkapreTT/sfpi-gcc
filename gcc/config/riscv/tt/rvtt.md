@@ -45,6 +45,7 @@
   UNSPECV_SFPVARLREG
   UNSPECV_SFPRAWLREG_ACCESS
   UNSPECV_TTREGION
+  UNSPECV_SFPRAWLREG_EFFECT
 
   UNSPECV_SFPNOP
   UNSPECV_SFPBANKDONE
@@ -271,9 +272,9 @@
 
 ;; This is a compiler-only raw-LLK ownership marker placed after the opaque
 ;; instruction region it describes.  Operand 0 releases values after their
-;; last raw use; operand 1 starts newly written values.  It is volatile so
-;; that it survives as an RTL insn for the analyses that read its masks, but
-;; it emits no Tensix instruction itself.
+;; last raw use; operand 1 starts newly written values.  It must remain
+;; volatile until the pre-IRA lreg-livein pass has made the indicated hard
+;; LREG values visible to IRA, but it emits no Tensix instruction itself.
 (define_insn "rvtt_sfprawlreg_access"
   [(unspec_volatile:XTT32SI [
      (match_operand:SI 0 "const_int_operand" "n")
@@ -307,6 +308,23 @@
   "# TTREGION END"
   [(set_attr "type" "tensix")
    (set_attr "xtt_replay" "safe")
+   (set_attr "length" "0")])
+
+;; Compiler-only per-instruction effects marker.  Operand 0 names LREGs read
+;; by the immediately preceding opaque instruction and operand 1 names LREGs
+;; it writes.  The lreg-livein pass extends each input reservation backwards
+;; to its reaching definition (or function entry), through the preceding raw
+;; instruction.  Writes are definitions and remain reserved only when a later
+;; read demands them.  sfprawlreg_access remains the explicit ownership/live-
+;; out interface.
+(define_insn "rvtt_sfprawlreg_effect"
+  [(unspec_volatile:XTT32SI [
+     (match_operand:SI 0 "general_operand" "g")
+     (match_operand:SI 1 "general_operand" "g")
+     ] UNSPECV_SFPRAWLREG_EFFECT)]
+  "TARGET_XTT_TENSIX"
+  "# RAWLREG_EFFECT %0, %1"
+  [(set_attr "type" "tensix")
    (set_attr "length" "0")])
 
 (define_insn "rvtt_sfpnovalue"
