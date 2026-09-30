@@ -10,8 +10,9 @@ file when it can prove the round trip exact.
 ## What it is
 
 A Chaitin-style build/color/spill loop, run immediately before IRA
-(after `pass_rvtt_dst_ownership` and `pass_rvtt_lp_schedule_prera`),
-under the default-off flag `-mtt-tensix-optimize-lreg-alloc`:
+(after `pass_rvtt_dst_ownership`, `pass_rvtt_lp_schedule_prera` and
+`pass_rvtt_lreg_livein`), under the default-off flag
+`-mtt-tensix-optimize-lreg-alloc`:
 
 1. **Trigger.** Function-wide peak simultaneous SFPU pressure (XTT32SI
    pseudos + SFPU hard regs, DF-simulated) is computed first.  Peak
@@ -23,8 +24,9 @@ under the default-off flag `-mtt-tensix-optimize-lreg-alloc`:
    deliberate, conservative approximation — no du-chain web splitting).
    Hard LREGs may appear only as raw-LREG reservation intervals (a
    recognized zero-length sentinel read, a bare USE endpoint, or a bare
-   XTT32SI CLOBBER of the physical register); they become fixed-color
-   nodes that are never spill candidates.
+   XTT32SI CLOBBER of the physical register), which
+   `pass_rvtt_lreg_livein` emits for raw LLK register accesses; they
+   become fixed-color nodes that are never spill candidates.
    Precolors come from the singleton-class constraints of the
    `rvtt_sfpreadlregN` / `rvtt_sfpwritelregN` metadata patterns;
    conflicting precolors on one web fail closed.  Interference is
@@ -192,6 +194,8 @@ CC contract that the CC synthesis (`gimple-rvtt-cc.cc`) assumes:
   no-inc mode.
 - `lreg-alloc-constants-renamed-varied-bh.C`: the shared
   `const-remat-body.h` shape, renamed and varied.
+- `lreg-alloc-reserved-sentinel-fire-bh.C`: raw producer holds L7
+  through a 9-live loop; only unreserved webs spill.
 - `lreg-alloc-dst32-scratch-derivation-bh.C`: kernel rows 0/252 push
   the scratch row to 248.
 - `lreg-alloc-rowloop-*-bh.C`: spills in a row loop with a proven

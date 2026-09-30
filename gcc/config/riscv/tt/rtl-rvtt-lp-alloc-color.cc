@@ -698,8 +698,8 @@ xtt32_pseudo_p (unsigned regno)
 }
 
 /* Whether REGNO is one allocation unit represented in the colouring graph.
-   Hard LREGs occur here only for raw-ownership reservation intervals; all
-   other values remain pseudos.  */
+   Hard LREGs occur here only for raw-ownership reservation intervals emitted
+   by pass_rvtt_lreg_livein; all other values remain pseudos.  */
 
 static bool
 xtt32_graph_unit_p (unsigned regno)
@@ -773,8 +773,9 @@ build_graph (function *fn, lpa_graph &g, bitmap spill_tmps)
 		  if (!SFPU_REG_P (regno))
 		    continue;
 
-		  /* A reservation is a recognized zero-length read, a bare USE
-		     endpoint, or a bare physical CLOBBER for raw writes.  */
+		  /* The livein pass emits a recognized zero-length read, a
+		     bare USE endpoint, and a bare physical CLOBBER for raw
+		     writes.  */
 		  bool reservation_def
 		    = read_lregno == (int) (regno - SFPU_REG_FIRST)
 		      && read_set && REG_P (SET_DEST (read_set))

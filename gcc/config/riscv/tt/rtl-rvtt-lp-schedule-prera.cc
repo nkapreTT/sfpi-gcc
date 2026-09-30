@@ -23,10 +23,10 @@ along with GCC; see the file COPYING3.  If not see
    pressure gate: after allocation the eight hard LREGs and their WAR/WAW
    edges are the bound, and a pressure-aware dispatch over virtual registers
    has to happen before allocation.  This pass does that: it runs on
-   pseudo-register RTL immediately before register allocation (rvtt_lp_alloc
-   coloring and IRA), where reordering can still turn a
-   ten-simultaneously-live instruction order into an
-   eight-register-schedulable one -- the difference between a clean
+   pseudo-register RTL immediately before register allocation (the
+   rvtt_lreg_livein reservations, rvtt_lp_alloc coloring and IRA), where
+   reordering can still turn a ten-simultaneously-live instruction order
+   into an eight-register-schedulable one -- the difference between a clean
    allocation and an lreg-pressure-exceeded error.
 
    The algorithm is GCC's own SCHED_PRESSURE_MODEL (haifa-sched.cc, "This is
@@ -1351,8 +1351,8 @@ public:
 } /* anonymous namespace */
 
 /* Instantiate the pre-allocation pressure scheduling pass for CTXT;
-   rvtt-passes.def places it before ira (ahead of the lp-alloc pass it
-   feeds), and it gates on optimization plus
+   rvtt-passes.def places it before ira (ahead of the lreg-livein and
+   lp-alloc passes it feeds), and it gates on optimization plus
    -mtt-tensix-optimize-pressure-schedule-prera.  */
 
 rtl_opt_pass *
