@@ -118,7 +118,9 @@ along with GCC; see the file COPYING3.  If not see
    scheduling (haifa-sched.cc SCHED_PRESSURE_MODEL) runs on RTL after
    expansion and prices pressure as a cost in cycles, which is the wrong
    shape for a register file with no spill path, where the eighth register
-   is free and the ninth is a compile error.
+   is free and the ninth is a compile error.  The RTL pre-allocation
+   scheduler that does adapt haifa's model, for stalls as well as the
+   ceiling, is rtl-rvtt-lp-schedule-prera.cc.
 
    Hardware.  The eight architectural SFPU vector registers L0-L7 (riscv.h
    SFPU_REG_NUM), counted as simultaneously live __xtt_vector XTT32SImode
