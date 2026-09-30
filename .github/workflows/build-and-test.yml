@@ -44,7 +44,7 @@ jobs:
         run: git config --global --add safe.directory '*'
 
       - name: Checkout binutils and newlib
-        run: git -C sfpi submodule update --init -- binutils newlib
+        run: git -C sfpi submodule update --init --depth 1 -- binutils newlib
 
       - name: Install packages
         run: |
