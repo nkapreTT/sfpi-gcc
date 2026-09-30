@@ -1863,8 +1863,9 @@ rvtt_dst_autoincr_carried_access_p (rtx_insn *insn)
 }
 
 /* Instantiate the Dst auto-increment pass for CTXT; rvtt-passes.def
-   places it after postreload (after replay formation), and it
-   gates on the Tensix extension plus -mtt-tensix-optimize-dst-autoincr.  */
+   places it after postreload (after replay formation, before MOP formation),
+   and it gates on the Tensix extension plus
+   -mtt-tensix-optimize-dst-autoincr.  */
 
 rtl_opt_pass *
 make_pass_rvtt_dst_autoincr (gcc::context *ctxt)

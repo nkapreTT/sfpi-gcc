@@ -106,7 +106,11 @@ along with GCC; see the file COPYING3.  If not see
      mop-store-alias-unproven	   a volatile store whose address can
 				   be proven neither inside nor
 				   outside the instruction FIFOs;
-     plus `unaudited raw opcode' for directly delivered words.  */
+     plus `unaudited raw opcode' for directly delivered words.
+
+   The address-folding and opcode-base helpers mirror
+   mop_pointer_constant_address, mop_ref_constant_address and
+   mop_pushed_word_base of rtl-rvtt-mop-outward.cc.  */
 
 #define INCLUDE_VECTOR
 #include "config.h"
@@ -235,7 +239,7 @@ assume_global_pointer_value (tree decl, unsigned HOST_WIDE_INT *val)
 }
 
 /* ------------------------------------------------------------------ */
-/* Address folding.  */
+/* Address folding (mirrors the rtl-rvtt-mop-outward.cc helpers).  */
 
 /* Fold PTR (a pointer value) to a constant byte address, following a
    short SSA chain of casts, constant pointer arithmetic, and loads of

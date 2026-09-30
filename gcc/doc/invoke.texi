@@ -1344,6 +1344,8 @@ See RS/6000 and PowerPC Options.
 -mtt-tensix-optimize-replay-record-hoist
 -mtt-tensix-optimize-replay-loop-unroll
 -mtt-tensix-optimize-launch-flatten
+-mtt-tensix-optimize-mop-form
+-mtt-tensix-mop-form-min-benefit=@var{n}
 -mtt-tensix-optimize-dst-autoincr
 -mtt-tensix-optimize-dst-autoincr-load-carrier
 -mtt-tensix-macro-planner-replay
@@ -32412,6 +32414,17 @@ loop-control instructions leave the timed issue path and the flattened
 word stream reaches replay formation.  The trip count must be proven,
 the flattened size is bounded per loop and per function, and the body
 must contain at least one Tensix vector operation.
+
+@opindex mtt-tensix-optimize-mop-form
+@item -mtt-tensix-optimize-mop-form
+Re-roll runs and counted loops of identical replay playback launches
+into a hardware MOP loop, replacing @var{n} launch words with a
+constant-size MOP program.
+
+@opindex mtt-tensix-mop-form-min-benefit
+@item -mtt-tensix-mop-form-min-benefit=@var{n}
+Set the minimum modeled benefit, in hundredths of an issue slot,
+required to form a MOP loop; overrides the built-in cost-table default.
 
 @opindex mtt-tensix-optimize-dst-autoincr
 @item -mtt-tensix-optimize-dst-autoincr
