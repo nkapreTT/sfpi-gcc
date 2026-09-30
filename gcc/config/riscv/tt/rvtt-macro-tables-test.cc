@@ -195,7 +195,7 @@ test_setc16 (const caps *bh, const caps *wh)
 {
   uint32_t w;
 
-  /* BH slot-6 words.  */
+  /* BH slot-6 words asserted by loadmacro-periodic-minmax-bh.C.  */
   CHECK (encode_setc16 (bh, 18, 0, &w));
   CHECK_EQ_HEX (w, 0xb2120000u);
   CHECK (encode_setc16 (bh, 34, 2, &w));

@@ -76,7 +76,7 @@ along with GCC; see the file COPYING3.  If not see
 #include "gimple-rvtt-crosscall-int.h"
 
 /* ==================================================================
-   Cross-call invariant-init hoist.
+   Cross-call invariant-init hoist (macro-planner service).
 
    A noinline per-tile callee whose macro formation emits an idempotent
    init prefix -- the derived descriptor program (staged SFPLOADI +
@@ -85,14 +85,14 @@ along with GCC; see the file COPYING3.  If not see
    although every written value is compile-time descriptor data that
    provably cannot change between calls.  A hand kernel programs the
    equivalent state once at kernel init.  This service, called from the
-   callee's macro formation while every caller body is still gimple
-   (callees run the late pipeline before their callers -- the same
-   ordering fact this file's coefficient hoist relies on), proves the
-   caller side and, on a complete proof, inserts the prefix as typed
-   builtin calls in the caller's loop preheader; the callee's formation
-   then omits the hoisted part from its emission.  Both sides commit
-   together or not at all; every unproven link refuses by name and the
-   per-call prefix
+   callee's macro-planner formation (rtl-rvtt-macro-planner.cc) while
+   every caller body is still gimple (callees run the late pipeline
+   before their callers -- the same ordering fact this file's
+   coefficient hoist relies on), proves the caller side and, on a
+   complete proof, inserts the prefix as typed builtin calls in the
+   caller's loop preheader; the planner then omits the hoisted part
+   from the callee's emission.  Both sides commit together or not at
+   all; every unproven link refuses by name and the per-call prefix
    stays unchanged.
 
    Two stages, decided by proof strength:
@@ -105,7 +105,7 @@ along with GCC; see the file COPYING3.  If not see
        loop.  The callee retains its per-call enable + owned SETC16
        program.  The hoisted block carries its own all-lanes enable for
        the lane-predicated staging loads, under the architectural
-       outermost-CC contract (the same license as the callee's own
+       outermost-CC contract (the same license as the planner's
        materialized enable).
 
      stage 2 (full prefix): additionally the owned SETC16 rows and the

@@ -289,7 +289,8 @@ bit; dead-bit and kind-nibble conventions differ as listed.
 
 ### 4.1 Position in the pipeline
 
-Descriptor synthesis (`rvtt-macro-desc.cc`) proceeds as follows:
+Descriptor synthesis in the macro planner (docs/MACRO_PLANNER.md,
+`rvtt-macro-desc.cc`) proceeds as follows:
 
 1. Match the proven whole-word programs first, so the shapes they
    cover keep byte-identical emission and their envelope restrictions.

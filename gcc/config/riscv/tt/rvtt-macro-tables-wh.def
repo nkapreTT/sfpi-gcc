@@ -33,7 +33,7 @@ along with GCC; see the file COPYING3.  If not see
    dual-slot address-modifier program) -- reference data for the
    cost-model regression only and never a planner input; with the
    single-slot program below the planner's derived break-even is 7 rows,
-   as on BH.  */
+   as on BH (loadmacro-periodic-minmax-seven-wh.C).  */
 XTT_MACRO_CAPS_SCALARS ("wh", /*n_templates*/4, /*n_sequence_slots*/4,
 			/*delay_bits*/3,
 			/*launch_opcode*/0x93, /*lreg_ind_shift*/20,
@@ -65,7 +65,8 @@ XTT_MACRO_CAPS_SCALARS ("wh", /*n_templates*/4, /*n_sequence_slots*/4,
    base-0 FPU/datacopy path of the loops that host transformed SFPI
    kernels (llk_math_eltwise_unary_datacopy.h MOV_8_ROWS, Dst+8).  A
    program that also writes the base-0 slot corrupts every tile after
-   the first.  */
+   the first.  The raw words are asserted by
+   loadmacro-periodic-minmax-wh.C.  */
 XTT_MACRO_ADDR_MOD_SLOT (/*phys*/6, /*src*/19, 0, /*dst*/29, 2,
 			 /*fid*/54, 0)
 

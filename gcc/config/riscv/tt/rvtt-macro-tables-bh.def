@@ -59,7 +59,8 @@ XTT_MACRO_CAPS_SCALARS ("bh", /*n_templates*/4, /*n_sequence_slots*/4,
 /* BH names physical address-modifier slot six directly in the launch's
    3-bit field.  SETC16 regs 18/34/53 own slot 6's Src increment+clear,
    Dst increment, fidelity increment+bias; values (0, 2, 0) program the
-   Dst += 2 auto-increment from any incoming state.  Raw SETC16 words:
+   Dst += 2 auto-increment from any incoming state.  Raw SETC16 words
+   asserted by loadmacro-periodic-minmax-bh.C:
    0xB2120000, 0xB2220002, 0xB2350000.  */
 XTT_MACRO_ADDR_MOD_SLOT (/*phys*/6, /*src*/18, 0, /*dst*/34, 2,
 			 /*fid*/53, 0)

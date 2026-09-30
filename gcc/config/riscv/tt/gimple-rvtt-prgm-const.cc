@@ -971,8 +971,9 @@ make_pass_rvtt_prgm_const (gcc::context *ctxt)
   return new pass_rvtt_prgm_const (ctxt);
 }
 
-/* The TU-wide CC/lane-enable audit, for RTL consumers that need the
-   function-entry lane state.  True exactly
+/* The TU-wide CC/lane-enable audit, consumed by the macro-planner's
+   entry-ambient walk (rtl-rvtt-macro-planner.cc
+   entry_ambient_all_lanes_p).  True exactly
    when the memoized TU scan ran AND classified every opaque-delivery
    channel in the TU -- raw `.ttinsn' words, stores (the
    instruction-FIFO/aperture audit), MOP template expansions, replay
