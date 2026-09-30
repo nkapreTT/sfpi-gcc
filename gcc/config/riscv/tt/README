@@ -40,8 +40,9 @@ a recorded reason (see section 5).
   replay formation           Record/playback formation: hoisting a record out
 			     of a loop, first-trip peel, outward lift across
 			     enclosing loops, window sizing.
-  LREG pressure              Pressure scheduling and renaming tiers for the 8
-			     LREGs.
+  LREG pressure              DSATUR graph-colouring allocation over the 8 LREGs
+			     with spill-through-scratch, plus pressure
+			     scheduling and renaming tiers.
   prgm constants             Constant-register promotion and the priced
 			     residency walk that keeps invariants resident.
   LUT selection              If-conversion of piecewise range dispatch into
@@ -191,4 +192,5 @@ here; do not mistake it for dead code:
   4. a small self-contained pass, such as gimple-rvtt-int-not.cc, before
      one of the large ones
   5. the design notes for the larger subsystems:
-     doc/SFPLOADMACRO_FORMATION.md and <repo>/docs/MACRO_PLANNER.md
+     doc/SFPLOADMACRO_FORMATION.md, <repo>/docs/MACRO_PLANNER.md and
+     <repo>/docs/LREG_ALLOCATOR.md

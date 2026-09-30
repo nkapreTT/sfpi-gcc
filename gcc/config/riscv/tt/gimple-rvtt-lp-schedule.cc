@@ -27,7 +27,9 @@ along with GCC; see the file COPYING3.  If not see
    it Undocumented solely so the error can be raised).  The gate is
    riscv_tt_opt_pressure_schedule (-mtt-tensix-optimize-pressure-schedule),
    and the exact solver is enabled by
-   -mtt-tensix-pressure-schedule-use-milp.
+   -mtt-tensix-pressure-schedule-use-milp.  The same
+   -mtt-tensix-optimize-pressure-schedule also enables the pre-IRA pressure
+   audit of rtl-rvtt-lp-alloc.cc.
 
    What the pass does.  It reorders -- and only reorders -- straight-line
    SFPU arithmetic so a region that needs more than eight simultaneously
