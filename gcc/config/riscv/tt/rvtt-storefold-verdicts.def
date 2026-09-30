@@ -47,11 +47,14 @@
 			       direct_sha)
      One licensed matching-precision pairing for the stochrnd
      store fold's pair_ok (-mtt-tensix-optimize-stochrnd-store-fold).
+     Statically typed converting stores only -- the sweep ran
+     mod0=1 and mod0=2, so there is no SRCB row here and an
+     SRCB store refuses stochrnd-store-fold-format-mismatch.
 
-   SRCB rows carry no stream commitment of their own: the SRCB
-   store resolves at runtime to one of the swept float paths (the
+   The SINK SRCB row carries no stream commitment of its own:
+   the SRCB store resolves at runtime to one of the swept float paths (the
    row's ALU config owns the resolution) --
-   their class is derived as the most refusing of the swept float
+   its class is derived as the most refusing of the swept float
    pairs.  */
 
 RVTT_STOREFOLD_PROOF ("store-sink-roundtrip/RESULT.txt", "dec619dca89dad89981fa554efe8697efdfd1a0284ce3e7c29eeba267f155226")
@@ -85,9 +88,7 @@ RVTT_STOREFOLD_SINK_PAIR (SFPMEM_MOD0_FMT_SRCB, SFPMEM_MOD0_FMT_SRCB, NOT_EQUAL,
 RVTT_STOCHRND_STORE_PAIR (SFPSTOCHRND_MOD1_FP32_TO_FP16B, SFPMEM_MOD0_FMT_BF16,
 			  "19db69aa97722e714519007a3f4b84bd0eae812ac485a4633341d323e0a18699",
 			  "5ffcf34fd77dc07f475b6973cf1cb3c82fb480524cfa97c281884b035311023f")
-RVTT_STOCHRND_STORE_PAIR (SFPSTOCHRND_MOD1_FP32_TO_FP16B, SFPMEM_MOD0_FMT_SRCB, "-", "-")
 /* row B: fp32->fp16a nearest vs the bare mod0=1 store.  */
 RVTT_STOCHRND_STORE_PAIR (SFPSTOCHRND_MOD1_FP32_TO_FP16A, SFPMEM_MOD0_FMT_FP16,
 			  "28a5eaee3f513e52a9536b0eadc73f283a235b001c290d99510915d91513f8d8",
 			  "6880d6bcc3d44bf0693419bfae8870aca6ecd04f5c265bf0ba928453faa6dd65")
-RVTT_STOCHRND_STORE_PAIR (SFPSTOCHRND_MOD1_FP32_TO_FP16A, SFPMEM_MOD0_FMT_SRCB, "-", "-")
