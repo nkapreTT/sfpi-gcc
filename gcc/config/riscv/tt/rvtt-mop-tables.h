@@ -325,7 +325,9 @@ constexpr unsigned HOST_WIDE_INT XTT_MOP_SYNC_MMIO_ADDR = 0xFFE80008;
    consumed but must deliver nothing holds this word.  */
 
 /* Whether every transitive caller of CFN leaves the MOP template live,
-   so a formation inside it may commit.  On a false return
+   so a formation inside it may commit.  Defined in
+   rtl-rvtt-mop-outward.cc; the proof obligation and its axioms are
+   stated in the rtl-rvtt-mop-form.cc file header.  On a false return
    *WHY names the refusal, *WHY_FN the function that caused it and *HOW
    the mechanism.  */
 extern bool rvtt_mop_outward_owned_p (function *cfn, const char **why,

@@ -115,6 +115,7 @@ along with GCC; see the file COPYING3.  If not see
    gcc/testsuite/g++.target/riscv/tt/tensix/ fix both the error set and
    the rule that UNKNOWN only notes: -violation-bh.C, -legal-bh.C,
    -raw-refuse-bh.C, -call-refuse-bh.C, -config-mod-not-dest-bh.C,
+   -mop-refuse-bh.C, -mop-outside-accept-bh.C,
    -state-note-bh.C, and the delivered-word replay family
    -replay-unproven-bh.C, -replay-nondominating-refuse-bh.C,
    -replay-delivered-violation-bh.C,
