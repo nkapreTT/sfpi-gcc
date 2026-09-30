@@ -90,6 +90,13 @@ RVTT_FN (sfprawlreg_access,  ,,VOID_FTYPE_USI_USI,                              
 // check (the sfprawlreg_access discipline).
 RVTT_FN (ttregion_begin,     ,,VOID_FTYPE_USI_USI,                                           VOL, ({CU, 16}, {CU, 8}))
 RVTT_FN (ttregion_end,       ,,VOID_FTYPE,                                                   VOL, ())
+// Metadata only: describe the LREG inputs and outputs of the immediately
+// preceding opaque raw instruction.  Unlike sfprawlreg_access, operand 0 is
+// a read/use mask, not a release mask.  The pass carries that use backwards
+// to its reaching raw/typed definition (or function entry).  A write is a
+// definition and is reserved only when a later read demands it.  Use the
+// legacy access marker for an explicit raw live-out/ownership declaration.
+RVTT_FN (sfprawlreg_effect,  ,,VOID_FTYPE_USI_USI,                                           VOL, ({R}, {R}))
 
 RVTT_FN (sfpnovalue,         ,,XTT_VEC_FTYPE,                                                0, ())
 RVTT_FN (sfpselect2,         ,,XTT_VEC_FTYPE_XTT_VEC2_USI,                                   0, ({CU, 1}))

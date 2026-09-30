@@ -1665,3 +1665,9 @@ RVTT_REFUSAL (ZERO_LENGTH,
 RVTT_REFUSAL (ZERO_TRIP_PREHEADER_UNPROVEN,
   "zero-trip-preheader-unproven",
   "dump; first seen in rtl-rvtt-macro-planner.cc")
+RVTT_REFUSAL (DRAIN_INIT_FIXED_LREG_LIVE,
+  "drain-init-fixed-lreg-live",
+  "init prefix would clobber raw architectural LREG state live through its placement edge")
+RVTT_REFUSAL (DRAIN_INIT_RAWLREG_UNPROVEN,
+  "drain-init-rawlreg-unproven",
+  "caller raw-LREG transfer at the init-prefix placement edge is not fully known")
