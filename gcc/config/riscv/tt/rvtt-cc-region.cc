@@ -1010,11 +1010,14 @@ rvtt_cc_region_tree::loop_cc_ambient_preserving_p (class loop *loop) const
    (see rvtt-cc-region.h edge_entry_all_lanes_p; the
    prepeel_ambient_all_lanes_p discipline of gimple-rvtt-prgm-const.cc
    with fail-closed calls/raw-words).  The LAST CC-relevant event of
-   the block decides: an all-lanes SFPENCC (typed, or an audited
-   ALL_LANES raw word) KILLS (re-establishes all-lanes); any other
-   CC-relevant statement, foreign call, or unaudited/CC-INERT-refuted
-   raw word makes the block DIRTY; CC-INERT raw words and everything
-   else are transparent.  */
+   the block decides: a typed all-lanes SFPENCC KILLS (re-establishes
+   all-lanes); any other CC-relevant statement, foreign call, or
+   unproven raw word makes the block DIRTY; audited raw words (INERT
+   and ALL_LANES alike) and everything else are transparent.  A raw
+   word never kills: it may sit in a REPLAY record window and not
+   execute, and the audited LaneConfig words do not touch LaneFlags,
+   so they cannot re-establish all-lanes from a partial state
+   (rvtt-raw-boundary.h).  */
 
 enum cc_kill_class
 {
@@ -1048,11 +1051,8 @@ classify_cc_kill_block (basic_block bb)
 	    uint32_t w;
 	    if (a && rvtt_raw_ttinsn_word_p (a, &w))
 	      {
-		rvtt_raw_cc_class c = rvtt_raw_cc_word_class (w);
-		if (c == RVTT_RAW_CC_INERT)
-		  break;
-		cls = c == RVTT_RAW_CC_ALL_LANES ? CC_KILL_KILLS
-						 : CC_KILL_DIRTY;
+		if (!rvtt_raw_cc_word_ambient_preserving_p (w))
+		  cls = CC_KILL_DIRTY;
 	      }
 	    else
 	      /* Foreign call or undecodable asm: fail closed.  */
