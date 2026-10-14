@@ -258,6 +258,27 @@ allowed_dst_effect_p (const rvtt_insn_data *insnd)
     || insnd->id == rvtt_insn_data::ttdstface;
 }
 
+/* Whether STMT is a structured predicate marker that delivers nothing:
+   the v_if/v_else/v_endif frame token, or a condition token whose
+   condition pass_rvtt_vif has already lowered into explicit compare
+   and SETCC statements (it zeroes the condition operand when it does).
+   Both expand to a scalar move of the dependency token and emit no
+   Tensix word, so they neither change CC nor write an LREG.  The frame
+   machinery they annotate (PUSHC, COMPC, POPC, the outermost ENCC) is
+   explicit and is classified on its own.  An unlowered condition
+   token still stands for CC writes yet to be emitted and is not
+   admitted.  */
+
+static bool
+inert_predicate_marker_p (const rvtt_insn_data *insnd, gcall *call)
+{
+  if (insnd->id == rvtt_insn_data::sfpxpred)
+    return true;
+  return insnd->id == rvtt_insn_data::sfpxcond
+	 && gimple_call_num_args (call) == 3
+	 && integer_zerop (gimple_call_arg (call, 2));
+}
+
 /* Whether every non-debug use of the SSA name VALUE sits inside LOOP,
    so hoisting its definition to the entry edge cannot stretch the
    value's live range beyond the loop.  */
@@ -306,6 +327,8 @@ rvtt_loop_has_sfpu_barrier_p (class loop *loop)
 	if (insnd)
 	  {
 	    gcall *call = as_a <gcall *> (stmt);
+	    if (inert_predicate_marker_p (insnd, call))
+	      continue;
 	    if (insnd->sets_cc (call)
 		|| (insnd->has_side_effects (call)
 		    && !allowed_dst_effect_p (insnd)))
@@ -411,6 +434,11 @@ rvtt_loop_cc_canonical_body (class loop *loop)
       if (insnd)
 	{
 	  gcall *call = as_a <gcall *> (stmt);
+	  /* The peel copies the markers along with the rest of the body;
+	     since they emit nothing they neither limit candidate
+	     placement nor count as the tail.  */
+	  if (inert_predicate_marker_p (insnd, call))
+	    continue;
 	  /* SFPPUSHC/SFPPOPC are CC-stack machinery (a nested v_if
 	     region the lowering kept): PUSHC copies the live flags to
 	     the stack, POPC restores them from it (the reference
