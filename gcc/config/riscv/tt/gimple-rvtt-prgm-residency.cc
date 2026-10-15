@@ -916,16 +916,21 @@ merge_rename_shape_p (gcall *load, FILE *stream,
    MAD-pair, hoisted-reuse and merge-rename candidates of FN's loops
    into LOOP_CANDS, MADPAIR_CANDS, HOISTREUSE_CANDS and MERGE_CANDS
    (MADPAIR_GROUP numbers the pair groups; TAKEN marks claimed
-   statements).  */
+   statements).  Without -mtt-tensix-optimize-hoisted-prgm-reuse the
+   hoisted constants go to RELIEF_CANDS instead (deduplicated by
+   RELIEF_TAKEN, not claimed): the pressure-park tier may still move
+   one into a PRGM register that already holds its value.  */
 
 static void
 residency_collect_loop_class (function *fn,
 			      auto_vec<residency_candidate> &loop_cands,
 			      auto_vec<residency_candidate> &madpair_cands,
 			      auto_vec<residency_candidate> &hoistreuse_cands,
+			      auto_vec<residency_candidate> &relief_cands,
 			      auto_vec<merge_rename_cand> &merge_cands,
 			      unsigned &madpair_group,
-			      hash_set<gimple *> &taken)
+			      hash_set<gimple *> &taken,
+			      hash_set<gimple *> &relief_taken)
 {
   for (class loop *loop : loops_list (fn, LI_FROM_INNERMOST))
     {
@@ -1538,19 +1543,24 @@ residency_collect_loop_class (function *fn,
 	 context) reads the identical all-lanes image the hoisted
 	 all-lanes materialization produced.  Pricing: one extra
 	 pushed word once per claim (the SFPCONFIG); a proven
-	 single-trip loop refuses by name (madpair's trip policy).  */
-      if (riscv_tt_opt_hoisted_prgm_reuse > 0)
+	 single-trip loop refuses by name (madpair's trip policy).
+	 With the flag off the same constants are still collected, as
+	 pressure-park relief candidates only (see lreg_hoist).  */
+      bool relief_only = riscv_tt_opt_hoisted_prgm_reuse <= 0;
+      if (!relief_only || riscv_tt_opt_pressure_park > 0)
 	{
 	  loop_trip_class hr_trips = !peel
 	    ? (admits_runtime_trips ? TRIPS_UNKNOWN : TRIPS_AT_LEAST_2)
 	    : classify_second_trip (loop, entry);
 	  if (hr_trips == TRIPS_PROVEN_SINGLE)
 	    {
-	      rvtt_refuse (RVTT_REF_TRIP_COUNT_SINGLE_TRIP, dump_file,
-			   "const-residency: hoisted-reuse loop bb %d refused "
-			   "(trip-count-single-trip: the loop provably runs "
-			   "one trip; the re-claim can never recover its "
-			   "programming word)\n", loop->header->index);
+	      if (!relief_only)
+		rvtt_refuse (RVTT_REF_TRIP_COUNT_SINGLE_TRIP, dump_file,
+			     "const-residency: hoisted-reuse loop bb %d "
+			     "refused (trip-count-single-trip: the loop "
+			     "provably runs one trip; the re-claim can never "
+			     "recover its programming word)\n",
+			     loop->header->index);
 	    }
 	  else
 	    {
@@ -1602,6 +1612,7 @@ residency_collect_loop_class (function *fn,
 			      || flow_bb_inside_loop_p (loop,
 							gimple_bb (load))
 			      || taken.contains (load)
+			      || (relief_only && relief_taken.contains (load))
 			      || !rvtt_invariant_constant_load_p
 				   (load, loop, /*allow_shortened=*/true))
 			    continue;
@@ -1641,6 +1652,12 @@ residency_collect_loop_class (function *fn,
 				    break;
 				  }
 			      }
+			  if (relief_only)
+			    {
+			      relief_cands.safe_push (c);
+			      relief_taken.add (load);
+			      continue;
+			    }
 			  hoistreuse_cands.safe_push (c);
 			  taken.add (load);
 			  if (dump_file)
@@ -1884,15 +1901,17 @@ residency_transform (function *fn, prgm_state *st)
   auto_vec<residency_candidate> pressure_cands;
   auto_vec<residency_candidate> madpair_cands;
   auto_vec<residency_candidate> hoistreuse_cands;
+  auto_vec<residency_candidate> relief_cands;
   auto_vec<merge_rename_cand> merge_cands;
   unsigned madpair_group = 0;
   hash_set<int_hash<unsigned, 0> > invalid_madpair_groups;
   hash_set<gimple *> taken;
+  hash_set<gimple *> relief_taken;
 
   /* LOOP class.  */
   residency_collect_loop_class (fn, loop_cands, madpair_cands,
-				hoistreuse_cands, merge_cands, madpair_group,
-				taken);
+				hoistreuse_cands, relief_cands, merge_cands,
+				madpair_group, taken, relief_taken);
 
   /* PRESSURE class: only when the model exceeds the LREG file.  */
   residency_collect_pressure_class (fn, pressure_cands, taken);
@@ -2011,6 +2030,12 @@ residency_transform (function *fn, prgm_state *st)
 	    hoistreuse_cands[kept++] = c;
 	  }
 	hoistreuse_cands.truncate (kept);
+	kept = 0;
+	for (residency_candidate &c : relief_cands)
+	  if (!cc_write_reaches_point_p (cc_writers, gimple_bb (c.load),
+					 c.load))
+	    relief_cands[kept++] = c;
+	relief_cands.truncate (kept);
 	if (loop_cands.is_empty () && pressure_cands.is_empty ()
 	    && madpair_cands.is_empty () && hoistreuse_cands.is_empty ()
 	    && merge_cands.is_empty ())
@@ -2196,6 +2221,8 @@ residency_transform (function *fn, prgm_state *st)
       for (residency_candidate &c : madpair_cands)
 	reclaim_reserved_values.safe_push (c.value);
       for (residency_candidate &c : hoistreuse_cands)
+	reclaim_reserved_values.safe_push (c.value);
+      for (residency_candidate &c : relief_cands)
 	reclaim_reserved_values.safe_push (c.value);
     }
   /* MAD-PAIR candidates stay in discovery order: members of one pair
@@ -2584,6 +2611,93 @@ residency_transform (function *fn, prgm_state *st)
      filter above), so the preheader lane state is the in-loop lane
      state verbatim.  */
   int lreg_budget = -1;		/* computed lazily on first exhaustion */
+  /* Relief for an exhausted file: a constant already hoisted out of the
+     candidate's loop holds a loop-wide LREG, and when a PRGM register
+     already holds that same value TU-wide (every TU write stores it,
+     typically a hand-written init sharing the polynomial), reading it
+     from there costs one SFPCONFIG per entry and frees the LREG for
+     the parked candidate, which saves its materialization on every
+     trip.  Only value-identical placements are taken (an earlier
+     allocation of the value, or the TU value), so relief never spends
+     a slot another class could use.  Placed candidates are cleared so
+     the hoisted-reuse sweep below skips them.  */
+  auto_vec<residency_candidate> &relief_pool
+    = riscv_tt_opt_hoisted_prgm_reuse > 0 ? hoistreuse_cands : relief_cands;
+  auto value_resident_p = [&] (unsigned value) -> bool
+    {
+      for (prgm_alloc &a : st->allocs)
+	if (a.value == value)
+	  return !a.reclaimed;
+      for (unsigned reg : prgm_regs)
+	if (!(st->claimed & (1u << reg)))
+	  return false;
+      const prgm_tu_facts &tu = tu_prgm_facts ();
+      for (unsigned reg : prgm_regs)
+	if ((tu.value_known & (1u << reg)) && tu.value[reg] == value)
+	  {
+	    bool repurposed = false;
+	    for (prgm_alloc &a : st->allocs)
+	      repurposed |= a.reg == reg && a.value != value;
+	    if (!repurposed)
+	      return true;
+	  }
+      return false;
+    };
+  auto overwritten_in_place_p = [] (tree name) -> bool
+    {
+      imm_use_iterator uit;
+      gimple *use;
+      FOR_EACH_IMM_USE_STMT (use, uit, name)
+	{
+	  const rvtt_insn_data *ud = rvtt_get_insn_data (use);
+	  if (!ud)
+	    continue;
+	  switch (ud->id)
+	    {
+	    case rvtt_insn_data::sfpiadd_v:
+	    case rvtt_insn_data::sfpiadd_v_lv:
+	    case rvtt_insn_data::sfpiadd_i:
+	    case rvtt_insn_data::sfpiadd_i_lv:
+	    case rvtt_insn_data::sfpmuli:
+	    case rvtt_insn_data::sfpmuli_lv:
+	    case rvtt_insn_data::sfpaddi:
+	    case rvtt_insn_data::sfpaddi_lv:
+	    case rvtt_insn_data::sfpshft_i:
+	    case rvtt_insn_data::sfpshft_i_lv:
+	    case rvtt_insn_data::sfpsetexp_i:
+	    case rvtt_insn_data::sfpsetexp_i_lv:
+	    case rvtt_insn_data::sfpsetman_i:
+	    case rvtt_insn_data::sfpsetman_i_lv:
+	    case rvtt_insn_data::sfpsetsgn_i:
+	    case rvtt_insn_data::sfpsetsgn_i_lv:
+	    case rvtt_insn_data::sfpswap:
+	      return true;
+	    default:
+	      if (ud->is_live ()
+		  && gimple_call_arg (as_a <gcall *> (use), ud->live_arg ())
+		     == name)
+		return true;
+	    }
+	}
+      return false;
+    };
+  auto relieve = [&] (residency_candidate &c) -> bool
+    {
+      for (residency_candidate &h : relief_pool)
+	if (h.load && h.loop == c.loop && value_resident_p (h.value)
+	    && place (h))
+	  {
+	    if (dump_file)
+	      fprintf (dump_file,
+		       "pressure-park: hoisted constant 0x%08x now read "
+		       "from its resident PRGM register to free an LREG\n",
+		       h.value);
+	    h.load = nullptr;
+	    changed = true;
+	    return true;
+	  }
+      return false;
+    };
   auto lreg_hoist = [&] (residency_candidate &c) -> bool
     {
       if (riscv_tt_opt_pressure_park <= 0 || !c.loop || c.inplace)
@@ -2592,6 +2706,14 @@ residency_transform (function *fn, prgm_state *st)
 	{
 	  lreg_budget = rvtt_pressure_residual (fn);
 	}
+      /* A parked one-word SFPLOADI that some consumer overwrites in
+	 place needs a per-row copy instead, so relief would only add
+	 its SFPCONFIG.  */
+      while (lreg_budget < 1
+	     && (rvtt_chained_loadi_root (c.load)
+		 || !overwritten_in_place_p (gimple_call_lhs (c.load)))
+	     && relieve (c))
+	lreg_budget = rvtt_pressure_residual (fn);
       if (lreg_budget < 1)
 	{
 	  if (dump_file)
@@ -2976,7 +3098,8 @@ residency_transform (function *fn, prgm_state *st)
      own order); a refused candidate keeps the hoisted LREG placement
      byte-identically.  */
   for (residency_candidate &c : hoistreuse_cands)
-    changed |= place (c);
+    if (c.load)
+      changed |= place (c);
 
   for (residency_candidate &c : pressure_cands)
     changed |= place (c);
