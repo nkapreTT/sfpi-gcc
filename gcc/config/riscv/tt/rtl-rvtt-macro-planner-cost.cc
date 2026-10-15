@@ -819,6 +819,10 @@ entry_ambient_all_lanes_p (basic_block point_bb, rtx_insn *before,
 	return dirty ("unrecognized");
       if (get_attr_type (insn) != TYPE_TENSIX)
 	return 0;
+      if (get_attr_length (insn) == 0)
+	/* Compiler-only markers (raw LREG effects, region bounds) deliver
+	   no instruction word, so they cannot touch the lane enables.  */
+	return 0;
       xtt_effect_set e = rvtt_macro_insn_effects (insn);
       if (e.opaque)
 	return dirty ("opaque-typed-effects");
