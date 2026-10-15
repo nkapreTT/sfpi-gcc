@@ -2315,6 +2315,7 @@ residency_transform (function *fn, prgm_state *st)
       basic_block prior_bb = nullptr;
       bool prior_reclaimed = false;
       bool prior_at_end = false;
+      prgm_alloc *prior = nullptr;
       for (prgm_alloc &a : st->allocs)
 	if (a.value == c.value)
 	  {
@@ -2322,6 +2323,7 @@ residency_transform (function *fn, prgm_state *st)
 	    prior_bb = a.bb;
 	    prior_reclaimed = a.reclaimed;
 	    prior_at_end = a.at_end;
+	    prior = &a;
 	    break;
 	  }
       /* A same-value candidate landing on a DEAD-claim reclaimed slot:
@@ -2500,6 +2502,42 @@ residency_transform (function *fn, prgm_state *st)
 		 || !dominated_by_p (CDI_DOMINATORS, use_bb, prior_bb))
 	      : (point_bb == prior_bb
 		 || !dominated_by_p (CDI_DOMINATORS, point_bb, prior_bb)));
+      /* An in-place programming that executes before the earlier
+	 programming of the same value on every path to it covers all of
+	 that programming's readers, so the earlier one is dropped below
+	 instead of writing the register twice.  Not for reclaimed slots,
+	 whose foreign writer may run in between.  */
+      gimple *superseded = nullptr;
+      if (reprogram && prior && prior->prog && !prior_reclaimed
+	  && !(c.loop && !c.inplace))
+	{
+	  basic_block prog_bb = gimple_bb (prior->prog);
+	  if (prog_bb != point_bb)
+	    {
+	      if (dominated_by_p (CDI_DOMINATORS, prog_bb, point_bb))
+		superseded = prior->prog;
+	    }
+	  else
+	    {
+	      /* Same block: whichever comes first covers the other.  */
+	      bool load_first = false;
+	      for (gimple_stmt_iterator gsi = gsi_start_bb (point_bb);
+		   !gsi_end_p (gsi); gsi_next (&gsi))
+		{
+		  if (gsi_stmt (gsi) == prior->prog)
+		    break;
+		  if (gsi_stmt (gsi) == c.load)
+		    {
+		      load_first = true;
+		      break;
+		    }
+		}
+	      if (load_first)
+		superseded = prior->prog;
+	      else
+		reprogram = false;
+	    }
+	}
       if (reprogram)
 	{
 	  auto_vec<gcall *> seq;
@@ -2539,8 +2577,46 @@ residency_transform (function *fn, prgm_state *st)
 	      gsi_insert_before (&lgsi, wrcfg, GSI_SAME_STMT);
 	    }
 	  if (!prior_bb)
-	    st->allocs.safe_push (prgm_alloc { c.value, prgm, prog_bb,
-					       tu_reclaim, prog_at_end });
+	    {
+	      prgm_alloc a { c.value, prgm, prog_bb, tu_reclaim,
+			     prog_at_end };
+	      a.prog = wrcfg;
+	      st->allocs.safe_push (a);
+	    }
+	  else if (superseded)
+	    {
+	      /* Drop the earlier SFPCONFIG and the staged load chain
+		 that only fed it.  */
+	      tree staged = gimple_call_arg (superseded, 0);
+	      gimple_stmt_iterator sgsi = gsi_for_stmt (superseded);
+	      unlink_stmt_vdef (superseded);
+	      gsi_remove (&sgsi, true);
+	      release_defs (superseded);
+	      while (staged && TREE_CODE (staged) == SSA_NAME
+		     && has_zero_uses (staged))
+		{
+		  gcall *ld = dyn_cast <gcall *> (SSA_NAME_DEF_STMT (staged));
+		  const rvtt_insn_data *ldd = ld ? rvtt_get_insn_data (ld)
+		    : nullptr;
+		  if (!ldd || !gimple_bb (ld)
+		      || (ldd->id != rvtt_insn_data::sfploadi
+			  && ldd->id != rvtt_insn_data::sfploadi_lv))
+		    break;
+		  staged = loadi_lv_link (ld);
+		  gimple_stmt_iterator lgsi = gsi_for_stmt (ld);
+		  unlink_stmt_vdef (ld);
+		  gsi_remove (&lgsi, true);
+		  release_defs (ld);
+		}
+	      prior->bb = prog_bb;
+	      prior->at_end = prog_at_end;
+	      prior->prog = wrcfg;
+	      if (dump_file)
+		fprintf (dump_file,
+			 "const-residency: PRGM L%u programming for 0x%08x "
+			 "moved up to bb %d (it dominates the earlier one)\n",
+			 prgm, c.value, prog_bb->index);
+	    }
 	}
       else if (dump_file)
 	fprintf (dump_file,

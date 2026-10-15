@@ -89,7 +89,10 @@ struct prgm_alloc { unsigned value; unsigned reg; basic_block bb;
 		    /* The programming sits at the end of BB rather than at
 		       its entry or at an in-place statement: every block
 		       strictly dominated by BB sees the value.  */
-		    bool at_end = false; };
+		    bool at_end = false;
+		    /* The residency walk's SFPCONFIG for this value, when it
+		       emitted one; null for the fusion class.  */
+		    gimple *prog = nullptr; };
 
 struct prgm_state
 {
