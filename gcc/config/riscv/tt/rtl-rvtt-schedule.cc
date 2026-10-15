@@ -7923,6 +7923,8 @@ struct wp_event
   bool dst_read, dst_write;
   bool dst_typed;		/* constant (addr, mod0) on record     */
   int dst_addr, dst_mod0;
+  bool staging_copy;		/* the store-source staging copy; no
+				   origin row instruction	       */
 };
 
 /* Audited Dst physical-row model (see the comment above; the same model
@@ -8152,6 +8154,43 @@ wp_event_footprint (const macro_descriptor &desc, const rvtt_macro::caps *c,
   return true;
 }
 
+/* Whether the decoded sequence slot of macro M at sub-unit position UNIT
+   is the descriptor's store-source staging copy (staging_copy_realization:
+   the launch VD copied into LReg16 on the producer's macro), which has no
+   origin row instruction.  On success fill EV's footprint: it reads the
+   launch VD (route_vb) and any template source field, and writes LReg16
+   plus the template's hidden writes.  */
+
+static bool
+wp_staging_copy_footprint (const macro_descriptor &desc,
+			   const rvtt_macro::caps *c, unsigned m,
+			   unsigned unit, wp_event *ev)
+{
+  rvtt_macro::staging_copy_facts copy;
+  if (!rvtt_macro::staging_copy_realization (c, &copy)
+      || unit != copy.seq_unit || !ev->vd16 || !ev->route_vb
+      || ev->kind < rvtt_macro::SEQ_CASE_TEMPLATE0
+      || ev->kind - rvtt_macro::SEQ_CASE_TEMPLATE0 >= desc.n_templates)
+    return false;
+  uint32_t word = desc.templ[ev->kind - rvtt_macro::SEQ_CASE_TEMPLATE0];
+  rvtt_macro::template_spec tspec;
+  if (!rvtt_macro::decode_template (word, &tspec)
+      || tspec.opcode != copy.opcode || tspec.mod1 != copy.mod1
+      || tspec.src_c >= 16)
+    return false;
+  const macro_launch_spec *spec = nullptr;
+  for (const macro_launch_spec &l : desc.launches)
+    if (l.macro_index == m)
+      spec = &l;
+  if (!spec)
+    return false;
+  ev->staging_copy = true;
+  ev->lreg_read = (1u << spec->vd) | (1u << tspec.src_c);
+  ev->lreg_write = (1u << 16)
+    | rvtt_macro::template_hidden_lreg_writes (c, word);
+  return true;
+}
+
 } /* anonymous namespace */
 
 /* Derive the minimal proven inter-row drain for REGION's uniform rows.
@@ -8349,6 +8388,7 @@ rvtt_macro_interrow_drain_tuned (function *fn, const macro_region &region,
 	== macro_event::LAUNCHED_TEMPLATE_SLOT)
       ++launched_total;
   int max_pend = 0;
+  unsigned n_staging = 0;
   for (unsigned m = 0; m != desc.n_seq && m != 8; ++m)
     {
       uint8_t bytes[4];
@@ -8381,23 +8421,29 @@ rvtt_macro_interrow_drain_tuned (function *fn, const macro_region &region,
 		return refuse ("window-pairing-footprint-opaque");
 	      found = (int) ix;
 	    }
-	  if (found < 0)
-	    return refuse ("window-pairing-footprint-opaque");
 	  wp_event ev;
 	  memset (&ev, 0, sizeof (ev));
-	  ev.sched_ix = (unsigned) found;
 	  ev.macro_index = m;
 	  ev.subunit = su;
 	  ev.kind = kind;
 	  ev.vd16 = vd16;
 	  ev.route_vb = route_vb;
+	  if (found < 0)
+	    {
+	      if (n_staging
+		  || !wp_staging_copy_footprint (desc, c, m, i, &ev))
+		return refuse ("window-pairing-footprint-opaque");
+	      ++n_staging;
+	    }
+	  else
+	    ev.sched_ix = (unsigned) found;
 	  ev.exec = carrier_pos[m] + 1 + (int) delay;
 	  if (ev.exec - last_pos > max_pend)
 	    max_pend = ev.exec - last_pos;
 	  staged.safe_push (ev);
 	}
     }
-  if (staged.length () != launched_total)
+  if (staged.length () != launched_total + n_staging)
     return refuse ("window-pairing-footprint-opaque");
   if (max_pend != full)
     return refuse ("window-pairing-delay-unproven");
@@ -8411,6 +8457,11 @@ rvtt_macro_interrow_drain_tuned (function *fn, const macro_region &region,
       {
 	wp_event p = sv;
 	p.exec = sv.exec - last_pos;	/* boundary-relative */
+	if (sv.staging_copy)
+	  {
+	    pending.safe_push (p);
+	    continue;
+	  }
 	int phase = stride_phase (sv.sched_ix);
 	if (phase < 0)
 	  return refuse ("window-pairing-stride-unproven");
@@ -8544,19 +8595,23 @@ rvtt_macro_interrow_drain_tuned (function *fn, const macro_region &region,
 		continue;	/* strictly after every pending writeback */
 	      wp_event f = staged[sx];
 	      f.exec = exec_f;
-	      int fphase = stride_phase (f.sched_ix);
-	      if (fphase < 0)
+	      if (!f.staging_copy)
 		{
-		  blocker = "window-pairing-stride-unproven";
-		  break;
-		}
-	      const char *why = nullptr;
-	      if (!wp_event_footprint (desc, c,
-				       region.rows[0].insns[f.sched_ix],
-				       stride * ((int) j + fphase), &f, &why))
-		{
-		  blocker = why;
-		  break;
+		  int fphase = stride_phase (f.sched_ix);
+		  if (fphase < 0)
+		    {
+		      blocker = "window-pairing-stride-unproven";
+		      break;
+		    }
+		  const char *why = nullptr;
+		  if (!wp_event_footprint (desc, c,
+					   region.rows[0].insns[f.sched_ix],
+					   stride * ((int) j + fphase), &f,
+					   &why))
+		    {
+		      blocker = why;
+		      break;
+		    }
 		}
 	      for (const wp_event &p : pending)
 		{
