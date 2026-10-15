@@ -99,3 +99,18 @@ runtime_word_keeps_lanes (volatile unsigned *issue, unsigned addr)
   SFPENCC_ALL_LANES;
   __builtin_rvtt_sfprawlreg_effect (0, 0);
 }
+
+/* Nothing in the function defined L1 before the partial write, so its
+   disabled lanes hold nothing a later read can rely on.  */
+void
+partial_write_of_undefined_lreg ()
+{
+  SFPSETCC_L0;
+  __builtin_rvtt_sfprawlreg_effect (0x01, 0);
+  SFPLOADI_L1 (2);
+  __builtin_rvtt_sfprawlreg_effect (0, 0x02);
+  SFPENCC_ALL_LANES;
+  __builtin_rvtt_sfprawlreg_effect (0, 0);
+  SFPMOV_L2_L1;
+  __builtin_rvtt_sfprawlreg_effect (0x02, 0x04);
+}
