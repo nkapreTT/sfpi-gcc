@@ -296,6 +296,20 @@ stored_word_lane_effect (rtx_insn *insn)
   return rvtt_raw_cc_opcode_inert_p (word >> 24) ? LANES_KEPT : LANES_ANY;
 }
 
+/* The constant opcode and register fields of raw instruction RAW, a
+   canonical `.ttinsn' word or a TT_ instruction-buffer store, in *WORD.  */
+
+static bool
+raw_insn_fields (rtx_insn *raw, uint32_t *word)
+{
+  if (asm_noperands (PATTERN (raw)) >= 0)
+    return rvtt_raw_ttinsn_word (raw, word);
+  rtx set = single_set (raw);
+  bool exact;
+  return (set && MEM_P (SET_DEST (set)) && MEM_VOLATILE_P (SET_DEST (set))
+	  && stored_word (raw, word, &exact));
+}
+
 /* The lane effect of INSN.  Scalar instructions cannot touch SFPU lane
    state; raw words are decoded through the audited word table; typed
    instructions use their audited effect attributes.  Everything not proven
@@ -353,13 +367,20 @@ insn_lane_effect (rtx_insn *insn)
 
 static vec<unsigned> effect_merges;
 
+/* For each effect marker (by UID), the declared reads that no instruction
+   observes: SFPLOADI writing one half of an LREG keeps the other half, but
+   when the next instruction loads that other half the old value is gone.  */
+
+static vec<unsigned> effect_dead_reads;
+
 /* The inputs of the raw instruction described by effect marker INSN, which
    reads READS and writes WRITES.  */
 
 static unsigned
 effect_inputs (rtx_insn *insn, unsigned reads, unsigned writes)
 {
-  return reads | (writes & effect_merges[INSN_UID (insn)]);
+  return ((reads & ~effect_dead_reads[INSN_UID (insn)])
+	  | (writes & effect_merges[INSN_UID (insn)]));
 }
 
 /* The raw instruction an effect marker describes: the preceding
@@ -374,6 +395,46 @@ marker_raw_insn (rtx_insn *marker)
     if (NONDEBUG_INSN_P (insn))
       return insn;
   return NULL;
+}
+
+/* Fill EFFECT_DEAD_READS for FN: an SFPLOADI that writes one half of an
+   LREG (UPPER, mod0 8, or LOWER, mod0 10; see SFPLOADI.md) reads the other
+   half, but if the very next instruction is an SFPLOADI of the other half
+   to the same LREG, both halves are new before anything reads them.  Lanes
+   cannot change between the two loads, so the lane analysis still decides
+   whether disabled lanes keep the old value.  */
+
+static void
+find_dead_half_reads (function *fn)
+{
+  effect_dead_reads.safe_grow_cleared (get_max_uid ());
+  basic_block bb;
+  FOR_EACH_BB_FN (bb, fn)
+    {
+      rtx_insn *half = NULL;
+      unsigned half_lreg = 0, half_mod = 0;
+      rtx_insn *insn;
+      FOR_BB_INSNS (bb, insn)
+	{
+	  if (!NONDEBUG_INSN_P (insn))
+	    continue;
+	  unsigned reads, writes;
+	  if (!raw_effect_p (insn, &reads, &writes))
+	    continue;
+	  rtx_insn *raw = marker_raw_insn (insn);
+	  uint32_t word = 0;
+	  bool loadi = (raw && raw_insn_fields (raw, &word)
+			&& (word >> 24) == 0x71);
+	  unsigned lreg = (word >> 20) & 0xf, mod = (word >> 16) & 0xf;
+	  if (loadi && half && marker_raw_insn (raw) == half
+	      && lreg == half_lreg && lreg < 8 && mod + half_mod == 18
+	      && (mod == 8 || mod == 10))
+	    effect_dead_reads[INSN_UID (half)] |= 1u << lreg;
+	  half = loadi && (mod == 8 || mod == 10) ? insn : NULL;
+	  half_lreg = lreg;
+	  half_mod = mod;
+	}
+    }
 }
 
 /* Lane state across INSN for the forward problem: ALL_LANES says every
@@ -440,11 +501,61 @@ find_lane_merges (function *fn)
     }
   while (changed);
 
+  /* Forward: LREGs some definition in FN may reach.  A disabled lane of
+     an LREG nothing in FN defined holds no value anyone can rely on, so only
+     a defined old value is worth keeping.  A call may define any LREG.  */
+  auto defined_after = [&] (rtx_insn *insn, unsigned defined)
+    {
+      unsigned reads, writes;
+      int regno;
+      if (CALL_P (insn))
+	return 0xffu;
+      if (raw_effect_p (insn, &reads, &writes)
+	  || raw_access_p (insn, &reads, &writes))
+	return defined | writes;
+      if ((regno = write_lregno (insn)) >= 0)
+	return defined | (1u << regno);
+      return defined;
+    };
+  auto_vec<unsigned> defined_out (n_bbs);
+  defined_out.safe_grow_cleared (n_bbs);
+  auto entry_defined = [&] (basic_block bb)
+    {
+      unsigned defined = 0;
+      edge e;
+      edge_iterator ei;
+      FOR_EACH_EDGE (e, ei, bb->preds)
+	defined |= defined_out[e->src->index];
+      return defined;
+    };
+  do
+    {
+      changed = false;
+      basic_block bb;
+      FOR_EACH_BB_FN (bb, fn)
+	{
+	  unsigned defined = entry_defined (bb);
+	  rtx_insn *insn;
+	  FOR_BB_INSNS (bb, insn)
+	    if (NONDEBUG_INSN_P (insn))
+	      defined = defined_after (insn, defined);
+	  if (defined != defined_out[bb->index])
+	    {
+	      defined_out[bb->index] = defined;
+	      changed = true;
+	    }
+	}
+    }
+  while (changed);
+
   auto_bitmap all_lanes_uids;
+  auto_vec<unsigned> defined_at (get_max_uid ());
+  defined_at.safe_grow_cleared (get_max_uid ());
   basic_block bb;
   FOR_EACH_BB_FN (bb, fn)
     {
       bool all_lanes = entry_all_lanes (bb);
+      unsigned defined = entry_defined (bb);
       bool before_prev = false;
       rtx_insn *insn;
       FOR_BB_INSNS (bb, insn)
@@ -452,12 +563,16 @@ find_lane_merges (function *fn)
 	  if (!NONDEBUG_INSN_P (insn))
 	    continue;
 	  unsigned reads, writes;
-	  if (raw_effect_p (insn, &reads, &writes)
+	  bool marker = raw_effect_p (insn, &reads, &writes);
+	  if (marker
 	      ? marker_raw_insn (insn) && before_prev
 	      : write_lregno (insn) >= 0 && all_lanes)
 	    bitmap_set_bit (all_lanes_uids, INSN_UID (insn));
+	  if (marker)
+	    defined_at[INSN_UID (insn)] = defined;
 	  before_prev = all_lanes;
 	  all_lanes = all_lanes_after (insn, all_lanes);
+	  defined = defined_after (insn, defined);
 	}
     }
 
@@ -490,7 +605,8 @@ find_lane_merges (function *fn)
 		  bool full = bitmap_bit_p (all_lanes_uids, INSN_UID (insn));
 		  if (record)
 		    {
-		      effect_merges[INSN_UID (insn)] = full ? 0 : writes & wide;
+		      effect_merges[INSN_UID (insn)]
+			= full ? 0 : writes & wide & defined_at[INSN_UID (insn)];
 		      if (dump_file && effect_merges[INSN_UID (insn)])
 			fprintf (dump_file, "Lane merge: insn %d keeps the old"
 				 " value of LREG mask 0x%02x\n", INSN_UID (insn),
@@ -499,7 +615,7 @@ find_lane_merges (function *fn)
 		  narrow &= ~writes;
 		  if (full)
 		    wide &= ~writes;
-		  narrow |= reads;
+		  narrow |= reads & ~effect_dead_reads[INSN_UID (insn)];
 		}
 	      else if (raw_access_p (insn, &reads, &writes))
 		narrow &= ~writes;
@@ -783,6 +899,7 @@ transfer_provenance_block (basic_block bb, unsigned live)
 static void
 make_raw_lregs_live (function *fn)
 {
+  find_dead_half_reads (fn);
   find_lane_merges (fn);
 
   const unsigned n_bbs = last_basic_block_for_fn (fn);
@@ -1139,6 +1256,7 @@ make_raw_lregs_live (function *fn)
 	  end_sentinel_at_block_end (live[regno], bb);
     }
   effect_merges.release ();
+  effect_dead_reads.release ();
 }
 
 const pass_data pass_data_rvtt_lreg_livein =
