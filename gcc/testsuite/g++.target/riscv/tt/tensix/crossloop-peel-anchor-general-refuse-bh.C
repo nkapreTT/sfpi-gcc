@@ -8,6 +8,8 @@
 // definitions -- here SCALE, the per-tile vector the copy consumes --
 // and run once per function instead of once per tile).  The lift refuses
 // by name and the candidate keeps the entry-anchored peel unchanged.
+// The tile loop's partial-lane SFPENCC keeps the inner loop's entry
+// state unproven, so its CC-canonical body still needs the peel.
 // { dg-options "-mcpu=tt-bh-tensix -O2 -fno-unroll-loops -mtt-tensix-optimize-const-residency -mtt-tensix-optimize-pressure-park -mtt-tensix-optimize-crossloop-hoist -mtt-tensix-optimize-cc-region-general -fdump-tree-rvtt_prgm_const-details" }
 // { dg-final { scan-tree-dump-times "lift refused .crossloop-peel-entry-anchored" 1 "rvtt_prgm_const" } }
 // { dg-final { scan-tree-dump-times "peeled first iteration" 1 "rvtt_prgm_const" } }
@@ -21,6 +23,7 @@ void ccpeel_lift_anchored (int tiles)
       /* Per-tile vector definition the inner body consumes: a lifted
 	 peel copy would read it before it exists.  */
       auto scale = __builtin_rvtt_sfpload (nullptr, 0, 0, 0, 4, 7);
+      __builtin_rvtt_sfpencc (10, 0);
       for (int row = 0; row != 8; ++row)
 	{
 	  auto x = __builtin_rvtt_sfpload (nullptr, 0, 0, 0, 6, 7);
