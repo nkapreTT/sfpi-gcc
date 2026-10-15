@@ -1777,7 +1777,9 @@ residency_collect_loop_class (function *fn,
 	 content this walk does not prove, so those candidates refuse
 	 the reclaim tier by construction (call_free_window stays
 	 false; free-slot and value-identical placements are
-	 unaffected).  */
+	 unaffected).  An own-entry candidate is cc-lifted only in name:
+	 it programs on this loop's own entry edge, so the body proof
+	 covers it.  */
       if (riscv_tt_opt_loop_prgm_reclaim > 0 && !this_loop.is_empty ())
 	{
 	  bool loop_call_free = true;
@@ -1801,7 +1803,8 @@ residency_collect_loop_class (function *fn,
 	  free (lr_body);
 	  for (residency_candidate &c : this_loop)
 	    c.call_free_window
-	      = loop_call_free && !c.cc_lifted && c.entry == entry;
+	      = loop_call_free && (!c.cc_lifted || c.own_entry)
+		&& c.entry == entry;
 	  if (!loop_call_free && dump_file)
 	    fprintf (dump_file,
 		     "const-residency: loop bb %d reclaim window unproven "
