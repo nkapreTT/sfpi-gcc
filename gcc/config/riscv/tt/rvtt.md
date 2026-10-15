@@ -3479,6 +3479,55 @@
   [(set_attr "type" "tensix")
    (set_attr "xtt_replay" "safe")
    (set_attr "xtt_delay" "dynamic")
+   ;; Effect/latency audit: SFPLUTFP32.md (BH+WH) reads the table
+   ;; LReg[0..2] and LReg[4..6] and the input LReg[3], writes VD only
+   ;; where lanes are enabled, and touches no CC, configuration, RWC or
+   ;; Dst state; scheduling is "as per SFPMAD" -> result latency 1.
+   ;; With INDIRECT_VD (mod1 & 8) the write goes through LReg[7]
+   ;; instead, which the position masks cannot express, so that keeps
+   ;; the refusing defaults.
+   (set (attr "xtt_subunit")
+	(if_then_else (match_test "(TARGET_XTT_TENSIX_BH
+				    || TARGET_XTT_TENSIX_WH)
+				   && CONST_INT_P (operands[8])
+				   && (INTVAL (operands[8]) & 8) == 0")
+		      (const_string "mad") (const_string "none")))
+   (set (attr "xtt_lreg_read_ops")
+	(if_then_else (match_test "(TARGET_XTT_TENSIX_BH
+				    || TARGET_XTT_TENSIX_WH)
+				   && CONST_INT_P (operands[8])
+				   && (INTVAL (operands[8]) & 8) == 0")
+		      (const_int 255) (const_int 0)))
+   (set (attr "xtt_lreg_write_ops")
+	(if_then_else (match_test "(TARGET_XTT_TENSIX_BH
+				    || TARGET_XTT_TENSIX_WH)
+				   && CONST_INT_P (operands[8])
+				   && (INTVAL (operands[8]) & 8) == 0")
+		      (const_int 2) (const_int 0)))
+   (set (attr "xtt_cc_effect")
+	(if_then_else (match_test "(TARGET_XTT_TENSIX_BH
+				    || TARGET_XTT_TENSIX_WH)
+				   && CONST_INT_P (operands[8])
+				   && (INTVAL (operands[8]) & 8) == 0")
+		      (const_string "read") (const_string "unknown")))
+   (set (attr "xtt_config_effect")
+	(if_then_else (match_test "(TARGET_XTT_TENSIX_BH
+				    || TARGET_XTT_TENSIX_WH)
+				   && CONST_INT_P (operands[8])
+				   && (INTVAL (operands[8]) & 8) == 0")
+		      (const_string "none") (const_string "unknown")))
+   (set (attr "xtt_rwc_effect")
+	(if_then_else (match_test "(TARGET_XTT_TENSIX_BH
+				    || TARGET_XTT_TENSIX_WH)
+				   && CONST_INT_P (operands[8])
+				   && (INTVAL (operands[8]) & 8) == 0")
+		      (const_string "none") (const_string "unknown")))
+   (set (attr "xtt_result_latency")
+	(if_then_else (match_test "(TARGET_XTT_TENSIX_BH
+				    || TARGET_XTT_TENSIX_WH)
+				   && CONST_INT_P (operands[8])
+				   && (INTVAL (operands[8]) & 8) == 0")
+		      (const_int 2) (const_int 0)))
    ;; Lane-gated consumer (typed-effect attributes).
    (set_attr "xtt_lane_gated" "yes")])
 

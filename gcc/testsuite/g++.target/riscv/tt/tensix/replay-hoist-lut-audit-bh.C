@@ -6,10 +6,10 @@
 // body refused as effect-opaque ("reissue-unproved: payload insn ... is
 // effect-opaque") -- the blocker for the whole LUT corpus family.  The
 // second function varies names, trip count, and uses the SGN_RETAIN
-// mod within the audited envelope.  The third uses SFPLUTFP32, whose
-// audit is DELIBERATELY deferred (rvtt-cost.md: the Mod1/Mod1Mirror
-// scheduling split and per-mode register envelopes need their own
-// audit): it keeps refusing effect-opaque by name.  SFPLUT's
+// mod within the audited envelope.  The third uses the three-entry
+// SFPLUTFP32, whose audit is DELIBERATELY deferred (rvtt-cost.md: the
+// Mod1/Mod1Mirror scheduling split and per-mode register envelopes need
+// their own audit): it keeps refusing effect-opaque by name.  SFPLUT's
 // INDIRECT_VD mod is unreachable here -- the builtin checker rejects
 // it by name at the front end ("invalid mod1 value"); the rvtt.md
 // refusing default remains as defense in depth.
