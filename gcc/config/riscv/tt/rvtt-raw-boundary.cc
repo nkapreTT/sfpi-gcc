@@ -477,6 +477,82 @@ rvtt_word_facts_classify (uint32_t word, rvtt_word_facts *f)
       return;
     }
 
+  /* Vector Unit value instructions.  VectorUnit.md (lane predication
+     masks) names every writer of lane-enable state: LaneFlags only by
+     SFPENCC, SFPSETCC, SFPLE, SFPGT, SFPIADD, SFPLZ and SFPEXEXP; the
+     FlagStack only by SFPPUSHC, SFPPOPC and SFPCOMPC (plus the
+     stack-mutating SFPLE/SFPGT modes); UseLaneFlagsForLaneEnable only by
+     SFPENCC; ROW_MASK only by SFPCONFIG.  The opcodes listed below as
+     untouched leave lane state alone in every field combination, and so
+     do the conditional writers when mod1 selects none of their CC arms:
+     SFPEXEXP without SET_CC_SGN_EXP (2) or SET_CC_COMP_EXP (8); SFPIADD
+     with CC_NONE (4) and without CC_GTE0 (8); SFPLZ without CC_NE0 (2) or
+     CC_COMP (8); SFPLE/SFPGT without SET_CC (1) or MUTATE_STACK (2).  With
+     VD >= 12 and backdoor loads enabled the word is captured into a
+     LoadMacroConfig template instead of executing, which touches no lane
+     state either.  SFPLOADMACRO schedules template instructions the word
+     does not carry, and the rows above own SFPLOADI, SFPENCC,
+     SFPCAST/SFPSTOCHRND and SFPCONFIG.  A CC-face fact only: these words
+     write LREGs (and, captured, LoadMacroConfig), so every other face
+     keeps its refusing default.  [ISA] VectorUnit.md, SFPEXEXP.md,
+     SFPIADD.md, SFPLZ.md, SFPLE.md, SFPGT.md.  */
+  {
+    unsigned mod1 = word & 0xf;
+    bool lanes_untouched;
+    switch (opcode)
+      {
+      case 0x70: /* SFPLOAD */
+      case 0x72: /* SFPSTORE */
+      case 0x73: /* SFPLUT */
+      case 0x74: /* SFPMULI */
+      case 0x75: /* SFPADDI */
+      case 0x76: /* SFPDIVP2 */
+      case 0x78: /* SFPEXMAN */
+      case 0x7A: /* SFPSHFT */
+      case 0x7C: /* SFPMOV */
+      case 0x7D: /* SFPABS */
+      case 0x7E: /* SFPAND */
+      case 0x7F: /* SFPOR */
+      case 0x80: /* SFPNOT */
+      case 0x82: /* SFPSETEXP */
+      case 0x83: /* SFPSETMAN */
+      case 0x84: /* SFPMAD */
+      case 0x85: /* SFPADD */
+      case 0x86: /* SFPMUL */
+      case 0x89: /* SFPSETSGN */
+      case 0x8C: /* SFPTRANSP */
+      case 0x8D: /* SFPXOR */
+      case 0x8F: /* SFPNOP */
+      case 0x92: /* SFPSWAP */
+      case 0x94: /* SFPSHFT2 */
+      case 0x95: /* SFPLUTFP32 */
+      case 0x98: /* SFPMUL24 */
+      case 0x99: /* SFPARECIP */
+	lanes_untouched = true;
+	break;
+      case 0x77: /* SFPEXEXP */
+      case 0x81: /* SFPLZ */
+	lanes_untouched = (mod1 & 0xa) == 0;
+	break;
+      case 0x79: /* SFPIADD */
+	lanes_untouched = (mod1 & 0xc) == 0x4;
+	break;
+      case 0x96: /* SFPLE */
+      case 0x97: /* SFPGT */
+	lanes_untouched = (mod1 & 0x3) == 0;
+	break;
+      default:
+	lanes_untouched = false;
+	break;
+      }
+    if (lanes_untouched)
+      {
+	f->row = RVTT_WF_SFPU_VALUE;
+	f->cc = RVTT_RAW_CC_INERT;
+	return;
+      }
+  }
+
   /* Sync family (0xA0..0xA7: ATGETM/ATRELM/SEMINIT/SEMPOST/SEMGET/
      SEMWAIT/STALLWAIT/...): semaphore, mutex and stall plumbing -- no
      SFPU lane state, LREG, PRGM or config effect in any functional

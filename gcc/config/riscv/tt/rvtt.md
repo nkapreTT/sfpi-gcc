@@ -315,8 +315,9 @@
 ;; it writes.  The lreg-livein pass extends each input reservation backwards
 ;; to its reaching definition (or function entry), through the preceding raw
 ;; instruction.  Writes are definitions and remain reserved only when a later
-;; read demands them.  sfprawlreg_access remains the explicit ownership/live-
-;; out interface.
+;; read demands them; where disabled lanes can keep the old value, the pass
+;; treats it as an input too.  sfprawlreg_access remains the explicit
+;; ownership/live-out interface.
 (define_insn "rvtt_sfprawlreg_effect"
   [(unspec_volatile:XTT32SI [
      (match_operand:SI 0 "general_operand" "g")
