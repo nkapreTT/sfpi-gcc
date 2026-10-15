@@ -158,11 +158,13 @@
 ;;
 ;; Deliberately left unannotated:
 ;;   - SFPSHFT2: mod-dependent next-cycle register constraints.
-;;   - SFPLUTFP32: its stalling logic keys on Mod1Mirror rather than Mod1,
-;;     and its 3-entry, 6-entry and FP32 modes read different LREG sets;
-;;     the SFPLUT entry does not transfer.  The FP16 six-entry selection
-;;     rows (mod0 2/3/6/7) are instruction-selection capability only;
-;;     rvtt_sfplutfp32_6r keeps every refusing default.
+;;   - SFPLUTFP32 other than rvtt_sfplutfp32_6r: its stalling logic keys
+;;     on Mod1Mirror rather than Mod1, and its 3-entry, 6-entry and FP32
+;;     modes read different LREG sets; the SFPLUT entry does not transfer.
+;;     rvtt_sfplutfp32_6r without INDIRECT_VD is annotated: every mode it
+;;     can carry reads within L0-L6, all of them operands, and the encoder
+;;     leaves Mod1Mirror clear, so the hardware stalls its consumers as
+;;     for SFPMAD.
 ;;   - Auto-incrementing load/store address modes (positional Dst/RWC
 ;;     state).
 ;;   - Quasar opcodes (no specification is available).
