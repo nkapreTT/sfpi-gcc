@@ -43,7 +43,26 @@
    carries effect reads to their reaching typed/raw definition or function
    entry, so inputs are protected across the entire producer-to-consumer gap.
    Effect writes are definitions in that backward problem, so dead raw outputs
-   do not consume scarce LREGs to function exit.  An access marker releases
+   do not consume scarce LREGs to function exit.
+
+   Lane merges
+
+   A raw instruction writes only the lanes enabled when it issues; the others
+   keep the old destination value.  The old value is therefore an input of the
+   write too, but only if some lane may be disabled at the write and a later
+   read may see that lane enabled again.  Two small problems decide this.  A
+   forward must-problem proves where every lane is enabled, using the
+   structured-CC contract the macro planner's ambient walk also relies on:
+   function entry has all lanes enabled, a typed all-lanes SFPENCC enables
+   them, a raw word of an audited CC-inert class keeps them, and anything else
+   may disable some.  A backward problem finds the reads that may happen after
+   lanes are re-enabled (any lane-state change other than an audited CC-inert
+   word, a call, or a typed read whose value we no longer follow).  A read
+   that only happens under the same or fewer lanes sees the new value in every
+   lane it reads.  Headers that declare only true reads (see
+   __riscv_xtt_sfprawlreg_merge) then reserve the old value just where a
+   disabled lane can leak it; headers that fold every write into the read
+   mask stay as conservative as before.  An access marker releases
    the named reservations and opens explicitly owned/live-out writes.  A typed
    sfpreadlreg<N> or sfpwritelreg<N> ends the raw reservation for that register.
 
@@ -83,6 +102,7 @@
 #include "function.h"
 #include "recog.h"
 #include "rvtt.h"
+#include "rvtt-raw-boundary.h"
 
 namespace {
 
@@ -185,6 +205,341 @@ raw_effect_p (rtx_insn *insn, unsigned *read_mask, unsigned *write_mask)
       df_insn_rescan (insn);
     }
   return true;
+}
+
+/* How an instruction can change which SFPU lanes are enabled.  */
+
+enum lane_effect
+{
+  /* Leaves lane-enable state alone.  */
+  LANES_KEPT,
+  /* A raw all-lanes word: it may be swallowed by a replay recording rather
+     than executed, so it only keeps an all-lanes state all-lanes, but it can
+     enable lanes.  */
+  LANES_KEEP_ALL,
+  /* Enables every lane.  */
+  LANES_ALL,
+  /* May enable or disable lanes.  */
+  LANES_ANY
+};
+
+/* The lane effect of raw instruction word WORD.  */
+
+static lane_effect
+raw_word_lane_effect (uint32_t word)
+{
+  switch (rvtt_raw_cc_word_class (word))
+    {
+    case RVTT_RAW_CC_INERT:
+      return LANES_KEPT;
+    case RVTT_RAW_CC_ALL_LANES:
+      return LANES_KEEP_ALL;
+    default:
+      return LANES_ANY;
+    }
+}
+
+/* The constant instruction word stored by volatile store INSN, the shape
+   of a TT_ instruction-buffer push.  Returns false unless the stored value
+   is a constant set earlier in INSN's block.  */
+
+static bool
+stored_word (rtx_insn *insn, uint32_t *word)
+{
+  rtx set = single_set (insn);
+  if (!set || !MEM_P (SET_DEST (set)) || !MEM_VOLATILE_P (SET_DEST (set)))
+    return false;
+  rtx src = SET_SRC (set);
+  if (REG_P (src))
+    for (rtx_insn *def = PREV_INSN (insn);
+	 def && BLOCK_FOR_INSN (def) == BLOCK_FOR_INSN (insn);
+	 def = PREV_INSN (def))
+      if (NONDEBUG_INSN_P (def) && reg_set_p (src, def))
+	{
+	  rtx def_set = single_set (def);
+	  rtx note = find_reg_equal_equiv_note (def);
+	  if (def_set && rtx_equal_p (SET_DEST (def_set), src)
+	      && CONST_INT_P (SET_SRC (def_set)))
+	    src = SET_SRC (def_set);
+	  else if (note && CONST_INT_P (XEXP (note, 0)))
+	    src = XEXP (note, 0);
+	  break;
+	}
+  if (!CONST_INT_P (src))
+    return false;
+  *word = UINTVAL (src);
+  return true;
+}
+
+/* The lane effect of INSN.  Scalar instructions cannot touch SFPU lane
+   state; raw words are decoded through the audited word table; typed
+   instructions use their audited effect attributes.  Everything not proven
+   is LANES_ANY.  */
+
+static lane_effect
+insn_lane_effect (rtx_insn *insn)
+{
+  if (!NONDEBUG_INSN_P (insn))
+    return LANES_KEPT;
+  if (CALL_P (insn))
+    return LANES_ANY;
+  rtx pat = PATTERN (insn);
+  if (GET_CODE (pat) == USE || GET_CODE (pat) == CLOBBER)
+    return LANES_KEPT;
+  uint32_t word;
+  if (asm_noperands (pat) >= 0)
+    {
+      if (rvtt_raw_ttinsn_word (insn, &word))
+	return raw_word_lane_effect (word);
+      rtx asm_ops = extract_asm_operands (pat);
+      const char *templ = asm_ops ? ASM_OPERANDS_TEMPLATE (asm_ops) : NULL;
+      if (templ)
+	templ += strspn (templ, " \t");
+      return templ && !*templ ? LANES_KEPT : LANES_ANY;
+    }
+  int code = recog_memoized (insn);
+  if (code < 0)
+    return LANES_ANY;
+  unsigned reads, writes;
+  if (raw_effect_p (insn, &reads, &writes)
+      || raw_access_p (insn, &reads, &writes)
+      || read_lregno (insn) >= 0 || write_lregno (insn) >= 0)
+    return LANES_KEPT;
+  if (get_attr_type (insn) != TYPE_TENSIX)
+    {
+      /* A volatile store may push a raw word into the instruction
+	 buffer.  */
+      rtx set = single_set (insn);
+      if (!set || !MEM_P (SET_DEST (set)) || !MEM_VOLATILE_P (SET_DEST (set)))
+	return LANES_KEPT;
+      return stored_word (insn, &word) ? raw_word_lane_effect (word)
+				       : LANES_ANY;
+    }
+  xtt_effect_set e = rvtt_insn_effects (insn);
+  if (e.opaque)
+    return LANES_ANY;
+  if (e.cc_write)
+    return e.cc_write_all_lanes ? LANES_ALL : LANES_ANY;
+  return LANES_KEPT;
+}
+
+/* For each effect marker (by UID), the written LREGs whose old value is an
+   input because a disabled lane may leak it.  Filled before any demand is
+   solved.  */
+
+static vec<unsigned> effect_merges;
+
+/* The inputs of the raw instruction described by effect marker INSN, which
+   reads READS and writes WRITES.  */
+
+static unsigned
+effect_inputs (rtx_insn *insn, unsigned reads, unsigned writes)
+{
+  return reads | (writes & effect_merges[INSN_UID (insn)]);
+}
+
+/* The raw instruction an effect marker describes: the preceding
+   non-debug instruction in its block, or null.  */
+
+static rtx_insn *
+marker_raw_insn (rtx_insn *marker)
+{
+  for (rtx_insn *insn = PREV_INSN (marker);
+       insn && BLOCK_FOR_INSN (insn) == BLOCK_FOR_INSN (marker);
+       insn = PREV_INSN (insn))
+    if (NONDEBUG_INSN_P (insn))
+      return insn;
+  return NULL;
+}
+
+/* Lane state across INSN for the forward problem: ALL_LANES says every
+   lane was enabled before INSN; returns whether every lane is still enabled
+   after it.  */
+
+static bool
+all_lanes_after (rtx_insn *insn, bool all_lanes)
+{
+  switch (insn_lane_effect (insn))
+    {
+    case LANES_KEPT:
+    case LANES_KEEP_ALL:
+      return all_lanes;
+    case LANES_ALL:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/* Fill EFFECT_MERGES for FN.  ALL_LANES collects the UIDs of the effect
+   markers and typed LREG writes that issue with every lane enabled; the
+   backward problem then keeps an old value as an input only for the other
+   writes, and only for the LREGs a later read may see in a re-enabled
+   lane.  */
+
+static void
+find_lane_merges (function *fn)
+{
+  const unsigned n_bbs = last_basic_block_for_fn (fn);
+  effect_merges.safe_grow_cleared (get_max_uid ());
+
+  /* Forward: every lane enabled at block exit.  Entry is all-lanes.  */
+  auto_sbitmap all_out (n_bbs);
+  bitmap_ones (all_out);
+  auto entry_all_lanes = [&] (basic_block bb)
+    {
+      edge e;
+      edge_iterator ei;
+      FOR_EACH_EDGE (e, ei, bb->preds)
+	if (e->src != ENTRY_BLOCK_PTR_FOR_FN (fn)
+	    && !bitmap_bit_p (all_out, e->src->index))
+	  return false;
+      return true;
+    };
+  bool changed;
+  do
+    {
+      changed = false;
+      basic_block bb;
+      FOR_EACH_BB_FN (bb, fn)
+	{
+	  bool all_lanes = entry_all_lanes (bb);
+	  rtx_insn *insn;
+	  FOR_BB_INSNS (bb, insn)
+	    all_lanes = all_lanes_after (insn, all_lanes);
+	  if (!all_lanes && bitmap_bit_p (all_out, bb->index))
+	    {
+	      bitmap_clear_bit (all_out, bb->index);
+	      changed = true;
+	    }
+	}
+    }
+  while (changed);
+
+  auto_bitmap all_lanes_uids;
+  basic_block bb;
+  FOR_EACH_BB_FN (bb, fn)
+    {
+      bool all_lanes = entry_all_lanes (bb);
+      bool before_prev = false;
+      rtx_insn *insn;
+      FOR_BB_INSNS (bb, insn)
+	{
+	  if (!NONDEBUG_INSN_P (insn))
+	    continue;
+	  unsigned reads, writes;
+	  if (raw_effect_p (insn, &reads, &writes)
+	      ? marker_raw_insn (insn) && before_prev
+	      : write_lregno (insn) >= 0 && all_lanes)
+	    bitmap_set_bit (all_lanes_uids, INSN_UID (insn));
+	  before_prev = all_lanes;
+	  all_lanes = all_lanes_after (insn, all_lanes);
+	}
+    }
+
+  /* Backward: NARROW holds LREGs whose current value is read later with no
+     lane re-enabled in between, WIDE those it may be read after a re-enable
+     (or by something we cannot follow).  */
+  auto_vec<unsigned> narrow_in (n_bbs), wide_in (n_bbs);
+  narrow_in.safe_grow_cleared (n_bbs);
+  wide_in.safe_grow_cleared (n_bbs);
+  auto transfer = [&] (basic_block bb, unsigned &narrow, unsigned &wide,
+		       bool record)
+    {
+      rtx_insn *raw_done = NULL;
+      for (rtx_insn *insn = BB_END (bb);; insn = PREV_INSN (insn))
+	{
+	  if (NONDEBUG_INSN_P (insn) && insn != raw_done)
+	    {
+	      unsigned reads, writes;
+	      int regno;
+	      lane_effect effect = LANES_KEPT;
+	      if (raw_effect_p (insn, &reads, &writes))
+		{
+		  raw_done = marker_raw_insn (insn);
+		  effect = raw_done ? insn_lane_effect (raw_done) : LANES_ANY;
+		  if (effect != LANES_KEPT)
+		    {
+		      wide |= narrow;
+		      narrow = 0;
+		    }
+		  bool full = bitmap_bit_p (all_lanes_uids, INSN_UID (insn));
+		  if (record)
+		    {
+		      effect_merges[INSN_UID (insn)] = full ? 0 : writes & wide;
+		      if (dump_file && effect_merges[INSN_UID (insn)])
+			fprintf (dump_file, "Lane merge: insn %d keeps the old"
+				 " value of LREG mask 0x%02x\n", INSN_UID (insn),
+				 effect_merges[INSN_UID (insn)]);
+		    }
+		  narrow &= ~writes;
+		  if (full)
+		    wide &= ~writes;
+		  narrow |= reads;
+		}
+	      else if (raw_access_p (insn, &reads, &writes))
+		narrow &= ~writes;
+	      else if ((regno = read_lregno (insn)) >= 0)
+		wide |= 1u << regno;
+	      else if ((regno = write_lregno (insn)) >= 0)
+		{
+		  narrow &= ~(1u << regno);
+		  if (bitmap_bit_p (all_lanes_uids, INSN_UID (insn)))
+		    wide &= ~(1u << regno);
+		}
+	      else if (CALL_P (insn))
+		{
+		  narrow = 0;
+		  wide = 0xff;
+		}
+	      else if (insn_lane_effect (insn) != LANES_KEPT)
+		{
+		  wide |= narrow;
+		  narrow = 0;
+		}
+	    }
+	  if (insn == BB_HEAD (bb))
+	    break;
+	}
+    };
+  do
+    {
+      changed = false;
+      FOR_EACH_BB_REVERSE_FN (bb, fn)
+	{
+	  unsigned narrow = 0, wide = 0;
+	  edge e;
+	  edge_iterator ei;
+	  FOR_EACH_EDGE (e, ei, bb->succs)
+	    if (e->dest != EXIT_BLOCK_PTR_FOR_FN (fn))
+	      {
+		narrow |= narrow_in[e->dest->index];
+		wide |= wide_in[e->dest->index];
+	      }
+	  transfer (bb, narrow, wide, false);
+	  if (narrow != narrow_in[bb->index] || wide != wide_in[bb->index])
+	    {
+	      narrow_in[bb->index] = narrow;
+	      wide_in[bb->index] = wide;
+	      changed = true;
+	    }
+	}
+    }
+  while (changed);
+
+  FOR_EACH_BB_FN (bb, fn)
+    {
+      unsigned narrow = 0, wide = 0;
+      edge e;
+      edge_iterator ei;
+      FOR_EACH_EDGE (e, ei, bb->succs)
+	if (e->dest != EXIT_BLOCK_PTR_FOR_FN (fn))
+	  {
+	    narrow |= narrow_in[e->dest->index];
+	    wide |= wide_in[e->dest->index];
+	  }
+      transfer (bb, narrow, wide, true);
+    }
 }
 
 /* RTL for a sentinel read of hard LREG REGNO defining VALUE, which is the
@@ -313,7 +668,7 @@ transfer_demand_block (basic_block bb, unsigned live)
 	{
 	  unsigned first, writes;
 	  if (raw_effect_p (insn, &first, &writes))
-	    live = (live & ~writes) | first;
+	    live = (live & ~writes) | effect_inputs (insn, first, writes);
 	  else if (raw_access_p (insn, &first, &writes))
 	    live &= ~(first | writes);
 	  else
@@ -345,7 +700,7 @@ transfer_effect_demand_block (basic_block bb, unsigned live)
 	{
 	  unsigned first, writes;
 	  if (raw_effect_p (insn, &first, &writes))
-	    live = (live & ~writes) | first;
+	    live = (live & ~writes) | effect_inputs (insn, first, writes);
 	  else if (raw_access_p (insn, &first, &writes))
 	    live &= ~(first | writes);
 	  else
@@ -404,6 +759,8 @@ transfer_provenance_block (basic_block bb, unsigned live)
 static void
 make_raw_lregs_live (function *fn)
 {
+  find_lane_merges (fn);
+
   const unsigned n_bbs = last_basic_block_for_fn (fn);
   auto_vec<unsigned> in (n_bbs), out (n_bbs);
   in.safe_grow_cleared (n_bbs);
@@ -536,7 +893,7 @@ make_raw_lregs_live (function *fn)
 	      demand_after[INSN_UID (insn)] = live;
 	      unsigned first, writes;
 	      if (raw_effect_p (insn, &first, &writes))
-		live = (live & ~writes) | first;
+		live = (live & ~writes) | effect_inputs (insn, first, writes);
 	      else if (raw_access_p (insn, &first, &writes))
 		live &= ~(first | writes);
 	      else
@@ -564,7 +921,7 @@ make_raw_lregs_live (function *fn)
 	      effect_after[INSN_UID (insn)] = live;
 	      unsigned first, writes;
 	      if (raw_effect_p (insn, &first, &writes))
-		live = (live & ~writes) | first;
+		live = (live & ~writes) | effect_inputs (insn, first, writes);
 	      else if (raw_access_p (insn, &first, &writes))
 		live &= ~(first | writes);
 	      else
@@ -646,6 +1003,7 @@ make_raw_lregs_live (function *fn)
 	  unsigned releases, writes;
 	  if (raw_effect_p (insn, &releases, &writes))
 	    {
+	      releases = effect_inputs (insn, releases, writes);
 	      /* Backward demand normally made each input live from its reaching
 		 definition.  Keep a local fallback for malformed or newly split RTL:
 		 the marker must at minimum reserve the preceding raw instruction.  */
@@ -756,6 +1114,7 @@ make_raw_lregs_live (function *fn)
 	if (live[regno])
 	  end_sentinel_at_block_end (live[regno], bb);
     }
+  effect_merges.release ();
 }
 
 const pass_data pass_data_rvtt_lreg_livein =

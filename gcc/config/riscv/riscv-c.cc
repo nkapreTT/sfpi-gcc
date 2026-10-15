@@ -228,6 +228,12 @@ riscv_cpu_cpp_builtins (cpp_reader *pfile)
   if (TARGET_XTT_TENSIX)
     builtin_define ("__riscv_xtt_sfprawlreg_effect");
 
+  /* The raw-LREG pass itself treats each raw write as reading the old value
+     of its destination wherever disabled lanes can keep it, so headers may
+     declare only an instruction's true reads.  */
+  if (TARGET_XTT_TENSIX)
+    builtin_define ("__riscv_xtt_sfprawlreg_merge");
+
   if (TARGET_ZICFISS && ((flag_cf_protection & CF_RETURN) == CF_RETURN))
     builtin_define ("__riscv_shadow_stack");
 
