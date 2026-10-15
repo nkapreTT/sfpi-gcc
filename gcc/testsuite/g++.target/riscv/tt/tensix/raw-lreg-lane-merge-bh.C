@@ -1,6 +1,7 @@
 // { dg-options "-mcpu=tt-bh-tensix -O2 -fno-exceptions -fno-rtti -fdump-rtl-rvtt_lreg_livein" }
 // { dg-final { scan-rtl-dump-times "Lane merge: insn \[0-9\]+ keeps the old value of LREG mask 0x02" 2 "rvtt_lreg_livein" } }
 // { dg-final { scan-rtl-dump-times "Lane merge:" 2 "rvtt_lreg_livein" } }
+// { dg-final { scan-rtl-dump-not "Lane merge: insn \[0-9\]+ keeps the old value of LREG mask 0x04" "rvtt_lreg_livein" } }
 
 #ifndef __riscv_xtt_sfprawlreg_merge
 #error "missing raw-LREG lane merge capability macro"
@@ -77,4 +78,24 @@ partial_write_typed_read ()
   SFPLOADI_L1 (2);
   __builtin_rvtt_sfprawlreg_effect (0, 0x02);
   __builtin_rvtt_sfpwritelreg (__builtin_rvtt_sfpreadlreg (1), 4);
+}
+
+/* A TT_ issue builds its word from runtime operands, but the constant part
+   still names an SFPLOAD, which leaves lanes alone: the partial write of L2
+   is read only under the same lanes.  */
+void
+runtime_word_keeps_lanes (volatile unsigned *issue, unsigned addr)
+{
+  TTI (0x71220000);
+  __builtin_rvtt_sfprawlreg_effect (0, 0x04);
+  SFPSETCC_L0;
+  __builtin_rvtt_sfprawlreg_effect (0x01, 0);
+  TTI (0x71220001);
+  __builtin_rvtt_sfprawlreg_effect (0, 0x04);
+  *issue = 0x70300000 + (addr & 0x1fff);
+  __builtin_rvtt_sfprawlreg_effect (0, 0x08);
+  TTI (0x7c000240);
+  __builtin_rvtt_sfprawlreg_effect (0x04, 0x10);
+  SFPENCC_ALL_LANES;
+  __builtin_rvtt_sfprawlreg_effect (0, 0);
 }

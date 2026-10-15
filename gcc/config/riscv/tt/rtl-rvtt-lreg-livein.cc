@@ -239,36 +239,61 @@ raw_word_lane_effect (uint32_t word)
     }
 }
 
-/* The constant instruction word stored by volatile store INSN, the shape
-   of a TT_ instruction-buffer push.  Returns false unless the stored value
-   is a constant set earlier in INSN's block.  */
+/* The word that volatile store INSN pushes, the shape of a TT_
+   instruction-buffer issue.  Returns false if it is unknown.  Otherwise
+   *EXACT says whether *WORD is the whole word; if not, *WORD is the
+   constant part of a REG_EQUAL constant plus runtime operand fields, whose
+   opcode and register fields are exact: an operand overflowing its field
+   would issue a different instruction than the one the source names, which
+   the raw effect metadata already assumes never happens.  */
 
 static bool
-stored_word (rtx_insn *insn, uint32_t *word)
+stored_word (rtx_insn *insn, uint32_t *word, bool *exact)
 {
-  rtx set = single_set (insn);
-  if (!set || !MEM_P (SET_DEST (set)) || !MEM_VOLATILE_P (SET_DEST (set)))
-    return false;
-  rtx src = SET_SRC (set);
-  if (REG_P (src))
+  rtx value = SET_SRC (single_set (insn));
+  rtx equal = NULL_RTX;
+  if (REG_P (value))
     for (rtx_insn *def = PREV_INSN (insn);
 	 def && BLOCK_FOR_INSN (def) == BLOCK_FOR_INSN (insn);
 	 def = PREV_INSN (def))
-      if (NONDEBUG_INSN_P (def) && reg_set_p (src, def))
+      if (NONDEBUG_INSN_P (def) && reg_set_p (value, def))
 	{
 	  rtx def_set = single_set (def);
 	  rtx note = find_reg_equal_equiv_note (def);
-	  if (def_set && rtx_equal_p (SET_DEST (def_set), src)
-	      && CONST_INT_P (SET_SRC (def_set)))
-	    src = SET_SRC (def_set);
-	  else if (note && CONST_INT_P (XEXP (note, 0)))
-	    src = XEXP (note, 0);
+	  if (note)
+	    equal = XEXP (note, 0);
+	  else if (def_set && rtx_equal_p (SET_DEST (def_set), value)
+		   && CONST_INT_P (SET_SRC (def_set)))
+	    equal = SET_SRC (def_set);
 	  break;
 	}
-  if (!CONST_INT_P (src))
+  else
+    equal = value;
+  if (!equal)
     return false;
-  *word = UINTVAL (src);
+  *exact = CONST_INT_P (equal);
+  if (!*exact
+      && (GET_CODE (equal) == PLUS || GET_CODE (equal) == IOR)
+      && CONST_INT_P (XEXP (equal, 1)))
+    equal = XEXP (equal, 1);
+  if (!CONST_INT_P (equal))
+    return false;
+  *word = UINTVAL (equal);
   return true;
+}
+
+/* The lane effect of the word that volatile store INSN pushes.  */
+
+static lane_effect
+stored_word_lane_effect (rtx_insn *insn)
+{
+  uint32_t word;
+  bool exact;
+  if (!stored_word (insn, &word, &exact))
+    return LANES_ANY;
+  if (exact)
+    return raw_word_lane_effect (word);
+  return rvtt_raw_cc_opcode_inert_p (word >> 24) ? LANES_KEPT : LANES_ANY;
 }
 
 /* The lane effect of INSN.  Scalar instructions cannot touch SFPU lane
@@ -312,8 +337,7 @@ insn_lane_effect (rtx_insn *insn)
       rtx set = single_set (insn);
       if (!set || !MEM_P (SET_DEST (set)) || !MEM_VOLATILE_P (SET_DEST (set)))
 	return LANES_KEPT;
-      return stored_word (insn, &word) ? raw_word_lane_effect (word)
-				       : LANES_ANY;
+      return stored_word_lane_effect (insn);
     }
   xtt_effect_set e = rvtt_insn_effects (insn);
   if (e.opaque)

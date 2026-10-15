@@ -112,6 +112,10 @@ extern rvtt_raw_cc_class rvtt_raw_cc_word_class (uint32_t word);
    from the all-lanes ambient (either proven class above).  */
 extern bool rvtt_raw_cc_word_ambient_preserving_p (uint32_t word);
 
+/* Every word with opcode OPCODE is CC-INERT, whatever its other fields:
+   the verdict for a word whose operand fields are runtime values.  */
+extern bool rvtt_raw_cc_opcode_inert_p (unsigned opcode);
+
 /* ================================================================== */
 /* The unified audited word-fact table.
 
